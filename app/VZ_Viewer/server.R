@@ -4,6 +4,9 @@ library(shinydashboard)
 library(leaflet)
 library(dplyr)
 library(curl) # make the jsonlite suggested dependency explicit
+library(sp)
+library(rgeos)
+library(sf)
 
 # Set WD
 work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -21,6 +24,13 @@ pc <- rgdal::readOGR('data/shp/prioritized_corridors')
 cpa_boundaries <- rgdal::readOGR('data/shp/community_planning_areas')
 nc_boundaries <- rgdal::readOGR('data/shp/neighborhood_councils')
 
+# Reformat sp objects to sf objects
+hin <- st_as_sf(hin)
+cd_boundaries <- st_as_sf(cd_boundaries)
+pc <- st_as_sf(pc)
+cpa_boundaries <- st_as_sf(cpa_boundaries)
+nc_boundaries <- st_as_sf(nc_boundaries)
+
 # When we setup the postgres, this is where i will run the connection script
 
 
@@ -29,89 +39,115 @@ function(input, output, session) {
   # Geography Type select input box
   output$geography_typeSelect <- renderUI({
     
-    selectInput("geography_type", "Type of Geography",
+    selectInput("geography_type", "Geography Type",
                 c("Council District" = "cd_boundaries",
                   "Neighborhood Council" = "nc_boundaries",
                   "Community Plan Area" = "cpa_boundaries"
                   ),
                   selected = "cd_boundaries")
   })
-
+  
  
    # Geography Name select input box
+   # Returns the name of the selected geography
    output$geography_nameSelect <- renderUI({
- 
+     
      # Begin Empty
      if (is.null(input$geography_type))
        return()
+
      
      # Grab the selected geography type and associated name column
      geography_selected <- get(input$geography_type)
-     print("geography_selected")
-     print(geography_selected)
-     column = cols[[geography_selected]]
-     print(column)
-     print("geography_names")
-     print(geography_selected$column)
-     geography_names <- sort(unique(geography_selected$column))
-     print("geography_names")
-     print(geography_names)
-     # Add names, so that we can add all=0
-     names(geography_names) <- geography_names
-     geography_names <- c(All = 0, geography_names)
+     
+     # Grab the text version (not the object) of the selected geography
+     # to look up the appropriate column value
+     column = cols[[input$geography_type]]
+     
+     # Grab geography name values from the appropriate column
+     # Make sure to use "@data" to grab only the data portion (for sp package)
+     #geography_names <- sort(unique(geography_selected@data[,column]))
+     
+     # sf (not sp) package version of the same command
+     geography_names <- sort(unique(geography_selected[[column]]))
      
      # Generate Geography Name Input Box
-     selectInput("geography_name", "Select:", choices = geography_names)
+     selectInput("geography_name", "Geography Name", choices = geography_names)
    })
    
+   # Reactive Function to Filter the geography (if needed)
+   geography <- reactive({
+     
+     # Begin Empty
+     if (is.null(input$geography_name))
+       return()
+     
+     # Grab the selected geography type and associated name column
+     # the 'get' function grabs an object from a str
+     geography_selected <- get(input$geography_type)
+     column = cols[[input$geography_type]]
+     
+     # Return the specific geographical boundaries 
+     print(geography_selected[(geography_selected[[column]] == input$geography_name),])
+   })
+
+  # Render the Leaflet Map
+  output$vzmap <- renderLeaflet({
+
+    # Run geography function to return selected geography
+    geography <- geography()
+
+    if (length(geography) == 0)
+      return(NULL)
+
+    # Filters
+    #hin.filter <- hin[geography, ]
+    #pc.filter <- pc[geography, ]
+    #print(str(hin.filter))
+    
+    # Clips
+    # when you clip, attribute information doesn't make it over; need to fix
+    #hin.clip <- gIntersection(hin, geography)#, byid = TRUE, drop_lower_td = TRUE)
+    #pc.clip <- gIntersection(pc, geography)#, byid = TRUE, drop_lower_td = TRUE)
+    
+    hin.clip <- st_intersection(hin, geography)
+    pc.clip <- st_intersection(pc, geography)
+
+    map <- leaflet() %>%
+      addProviderTiles(providers$Stamen.TonerLite,
+                       options = providerTileOptions(noWrap = TRUE)
+      ) %>%
+      
+      # Add the boundary
+      addPolygons(
+        data = geography
+        #fill = FALSE,
+        #label = ~DISTRICT
+      ) %>%
+      
+      # Add filtered HIN
+      addPolylines(
+        color = '#f44242',
+        weight = 3,
+        opacity = 1,
+        data = hin.clip,
+        label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
+      ) %>%
+     
+     # Add filtered PC
+     addPolylines(
+       color = '#0E016F',
+       weight = 3,
+       opacity = 1,
+       data = pc.clip
+     )
+
+    # Set Zoom Options
+    map <- map %>% mapOptions(zoomToLimits = "always")
+    
+    # Generate the map
+    map
+
+  })
 }
-   
-#   # Reactive Function to Select the boundary of the Geography
-#   geography <- reactive({
-#     if (is.null(input$geography_name))
-#       return()
-#     
-#     # Return all if "0" is selected
-#     if (as.numeric(input$geography_name) == 0)
-#       return(input$geography_type)
-#     
-#     # Otherwise, filter by the selected CD num
-#     # MAY NEED TO MAKE 'cdnum' a string instead of number
-#     geography_selected[column == input$geography_name, ]
-#   })
-#   
-#   # Render the Leaflet Map
-#   output$vzmap <- renderLeaflet({
-#     
-#     # Run geography function to return selected geography
-#     geography <- geography()
-#     
-#     if (length(geography) == 0)
-#       return(NULL)
-#     
-#     # Filter HIN by Geography
-#     hin.filter <- hin[geography, ]
-#     
-#     map <- leaflet() %>%
-#       addProviderTiles(providers$Stamen.TonerLite,
-#                        options = providerTileOptions(noWrap = TRUE)
-#       ) %>%
-#       addPolygons(
-#         data = geography
-#         #fill = FALSE,
-#         #label = ~DISTRICT
-#       ) %>%
-#       addPolylines(
-#         color = '#f44242',
-#         weight = 3,
-#         opacity = 1,
-#         data = hin.filter,
-#         label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
-#       )
-# 
-#     # Generate the map 
-#     map
-#     
-#   })
-# }
 
