@@ -24,9 +24,11 @@ body <- dashboardBody(
     column(width = 3,
            box(width = NULL, status = "warning",
                uiOutput("geography_typeSelect")
-           ),
+              ),
            box(width = NULL, status = "warning",
-               uiOutput("geography_nameSelect"))
+               uiOutput("geography_nameSelect")
+              ),
+           downloadButton("report","Generate Report")
            
     )
     

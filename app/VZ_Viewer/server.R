@@ -7,6 +7,7 @@ library(curl) # make the jsonlite suggested dependency explicit
 library(sp)
 library(rgeos)
 library(sf)
+library(mapview)
 
 # Set WD
 work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -64,10 +65,6 @@ function(input, output, session) {
      # to look up the appropriate column value
      column = cols[[input$geography_type]]
      
-     # Grab geography name values from the appropriate column
-     # Make sure to use "@data" to grab only the data portion (for sp package)
-     #geography_names <- sort(unique(geography_selected@data[,column]))
-     
      # sf (not sp) package version of the same command
      geography_names <- sort(unique(geography_selected[[column]]))
      
@@ -103,13 +100,8 @@ function(input, output, session) {
     # Filters
     #hin.filter <- hin[geography, ]
     #pc.filter <- pc[geography, ]
-    #print(str(hin.filter))
     
     # Clips
-    # when you clip, attribute information doesn't make it over; need to fix
-    #hin.clip <- gIntersection(hin, geography)#, byid = TRUE, drop_lower_td = TRUE)
-    #pc.clip <- gIntersection(pc, geography)#, byid = TRUE, drop_lower_td = TRUE)
-    
     hin.clip <- st_intersection(hin, geography)
     pc.clip <- st_intersection(pc, geography)
 
@@ -145,9 +137,42 @@ function(input, output, session) {
     # Set Zoom Options
     map <- map %>% mapOptions(zoomToLimits = "always")
     
+    # Getting errors; need to figure this out.
+    #mapshot(map, file = '~/mapPlot.png')
+    
     # Generate the map
     map
 
   })
+  
+  # Generate the Report
+  output$report <- downloadHandler(
+    filename = 'report.html',
+    content = function(file) {
+      
+      src <- normalizePath('Report.Rmd')
+      
+      # Copy the report file to a temporary directory before processing it, in 
+      # case we don't have write permissions to the current working dir (which
+      # can happen when deployed).
+      owd <- setwd(tempdir())
+      on.exit(setwd(owd))
+      file.copy(src, 'Report.Rmd', overwrite = TRUE)
+      
+      # Setup parameters to pas to Rmd document
+      params <- list(goegraphy_type = input$geography_type,
+                     geography_name = input$geography_name,
+                     map = geography)
+      
+      # Knit the document, passing in the 'params' list, and eval it in a
+      # chile of the global environment (this isolates the code in the doucment
+      # from the code in this app)
+      out <- rmarkdown::render('Report.Rmd',
+                               params = params
+                               )
+      file.rename(out,file)
+
+    }
+  )
 }
 
