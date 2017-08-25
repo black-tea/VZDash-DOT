@@ -162,7 +162,7 @@ function(input, output, session) {
       # Setup parameters to pas to Rmd document
       params <- list(goegraphy_type = input$geography_type,
                      geography_name = input$geography_name,
-                     map = geography)
+                     map = get(input$geography_type))
       
       # Knit the document, passing in the 'params' list, and eval it in a
       # chile of the global environment (this isolates the code in the doucment

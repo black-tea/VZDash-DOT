@@ -1,5 +1,19 @@
 ---
 output: html_document
 ---
-# `r input$geography_type` `r input$geography_name`
+# `r input$geography_type`: `r input$geography_name`
 
+```{r}
+library(leaflet)
+leaflet() %>%
+  addProviderTiles(providers$Stamen.TonerLite,
+                   options = providerTileOptions(noWrap = TRUE)
+  ) %>%
+      
+  # Add the boundary
+  addPolygons(
+    data = params$map
+    #fill = FALSE,
+    #label = ~DISTRICT
+  )
+```
