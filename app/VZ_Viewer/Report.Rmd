@@ -3,8 +3,13 @@ output: html_document
 ---
 # `r input$geography_type`: `r input$geography_name`
 
-```{r}
+```{r, echo=FALSE}
 library(leaflet)
+library(sf)
+
+#hin.clip <- st_intersection(hin, geography)
+#pc.clip <- st_intersection(pc, geography)
+
 leaflet() %>%
   addProviderTiles(providers$Stamen.TonerLite,
                    options = providerTileOptions(noWrap = TRUE)
@@ -15,5 +20,23 @@ leaflet() %>%
     data = params$map
     #fill = FALSE,
     #label = ~DISTRICT
+  ) %>%
+
+  # Add filtered HIN
+  addPolylines(
+    color = '#f44242',
+    weight = 3,
+    opacity = 1,
+    data = params$hin,
+    label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
+  ) %>%
+
+  # Add filtered PC
+  addPolylines(
+    color = '#0E016F',
+    weight = 3,
+    opacity = 1,
+    data = params$pc
   )
+  
 ```

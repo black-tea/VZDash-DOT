@@ -8,6 +8,8 @@ library(sp)
 library(rgeos)
 library(sf)
 library(mapview)
+library(webshot)
+library(htmlwidgets)
 
 # Set WD
 work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -73,11 +75,11 @@ function(input, output, session) {
    })
    
    # Reactive Function to Filter the geography (if needed)
-   geography <- reactive({
+    geography <- reactive({
      
-     # Begin Empty
-     if (is.null(input$geography_name))
-       return()
+      # Begin Empty
+      if (is.null(input$geography_name))
+        return()
      
      # Grab the selected geography type and associated name column
      # the 'get' function grabs an object from a str
@@ -87,32 +89,23 @@ function(input, output, session) {
      # Return the specific geographical boundaries 
      print(geography_selected[(geography_selected[[column]] == input$geography_name),])
    })
-
-  # Render the Leaflet Map
-  output$vzmap <- renderLeaflet({
-
-    # Run geography function to return selected geography
-    geography <- geography()
-
-    if (length(geography) == 0)
-      return(NULL)
-
-    # Filters
-    #hin.filter <- hin[geography, ]
-    #pc.filter <- pc[geography, ]
-    
-    # Clips
-    hin.clip <- st_intersection(hin, geography)
-    pc.clip <- st_intersection(pc, geography)
-
-    map <- leaflet() %>%
+   
+  hin.clip <- reactive({
+   st_intersection(hin, geography())
+  })
+  
+  pc.clip <- reactive({
+   st_intersection(pc,geography())
+  })
+   
+  map <- reactive({ leaflet() %>%
       addProviderTiles(providers$Stamen.TonerLite,
                        options = providerTileOptions(noWrap = TRUE)
       ) %>%
       
       # Add the boundary
       addPolygons(
-        data = geography
+        data = geography()
         #fill = FALSE,
         #label = ~DISTRICT
       ) %>%
@@ -122,28 +115,76 @@ function(input, output, session) {
         color = '#f44242',
         weight = 3,
         opacity = 1,
-        data = hin.clip,
+        data = hin.clip(),
         label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
       ) %>%
-     
-     # Add filtered PC
-     addPolylines(
-       color = '#0E016F',
-       weight = 3,
-       opacity = 1,
-       data = pc.clip
-     )
-
-    # Set Zoom Options
-    map <- map %>% mapOptions(zoomToLimits = "always")
-    
-    # Getting errors; need to figure this out.
-    #mapshot(map, file = '~/mapPlot.png')
-    
-    # Generate the map
-    map
-
+      
+      # Add filtered PC
+      addPolylines(
+        color = '#0E016F',
+        weight = 3,
+        opacity = 1,
+        data = pc.clip()
+      )
   })
+    # # Set Zoom Options
+    # map <- map %>% mapOptions(zoomToLimits = "always")
+    # 
+    # # Generate the map
+    # map
+    
+
+  # Render the Leaflet Map
+  output$vzmap <- renderLeaflet({
+    map()
+  })
+  #   
+  #   
+  #   renderLeaflet({
+  # 
+  #   # Run geography function to return selected geography
+  #   geography <- geography()
+  # 
+  #   if (length(geography) == 0)
+  #     return(NULL)
+  #   
+  # 
+  #   map <- leaflet() %>%
+  #     addProviderTiles(providers$Stamen.TonerLite,
+  #                      options = providerTileOptions(noWrap = TRUE)
+  #     ) %>%
+  #     
+  #     # Add the boundary
+  #     addPolygons(
+  #       data = geography
+  #       #fill = FALSE,
+  #       #label = ~DISTRICT
+  #     ) %>%
+  #     
+  #     # Add filtered HIN
+  #     addPolylines(
+  #       color = '#f44242',
+  #       weight = 3,
+  #       opacity = 1,
+  #       data = hin.clip(),
+  #       label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
+  #     ) %>%
+  #    
+  #    # Add filtered PC
+  #    addPolylines(
+  #      color = '#0E016F',
+  #      weight = 3,
+  #      opacity = 1,
+  #      data = pc.clip()
+  #    )
+  # 
+  #   # Set Zoom Options
+  #   map <- map %>% mapOptions(zoomToLimits = "always")
+  #   
+  #   # Generate the map
+  #   map
+  # 
+  # })
   
   # Generate the Report
   output$report <- downloadHandler(
@@ -159,10 +200,19 @@ function(input, output, session) {
       on.exit(setwd(owd))
       file.copy(src, 'Report.Rmd', overwrite = TRUE)
       
+      # Getting errors; need to figure this out.
+      #webshot::install_phantomjs()
+      saveWidget(map(), "temp.html", selfcontained=FALSE)
+      webshot("temp.html", file = 'mapPlot.png', cliprect='viewport')
+      
+      
       # Setup parameters to pas to Rmd document
       params <- list(goegraphy_type = input$geography_type,
                      geography_name = input$geography_name,
-                     map = get(input$geography_type))
+                     map = geography(),
+                     hin = hin.clip(),
+                     pc = pc.clip()
+                     )
       
       # Knit the document, passing in the 'params' list, and eval it in a
       # chile of the global environment (this isolates the code in the doucment
