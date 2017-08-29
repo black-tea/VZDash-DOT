@@ -1,15 +1,19 @@
+####################
 # VZ Viewer Server Code
+####################
 
+##### Setup
 library(shinydashboard)
 library(leaflet)
 library(dplyr)
-library(curl) # make the jsonlite suggested dependency explicit
+library(curl) 
 library(sp)
 library(rgeos)
 library(sf)
 library(mapview)
 library(webshot)
 library(htmlwidgets)
+library(units)
 
 # Set WD
 work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -33,13 +37,14 @@ cd_boundaries <- st_as_sf(cd_boundaries)
 pc <- st_as_sf(pc)
 cpa_boundaries <- st_as_sf(cpa_boundaries)
 nc_boundaries <- st_as_sf(nc_boundaries)
+lapd_collisions <- st_as_sf(lapd_collisions)
 
 # When we setup the postgres, this is where i will run the connection script
 
 
 function(input, output, session) {
 
-  # Geography Type select input box
+  ##### Geography Type select input box
   output$geography_typeSelect <- renderUI({
     
     selectInput("geography_type", "Geography Type",
@@ -51,8 +56,7 @@ function(input, output, session) {
   })
   
  
-   # Geography Name select input box
-   # Returns the name of the selected geography
+   ##### Geography Name select input box
    output$geography_nameSelect <- renderUI({
      
      # Begin Empty
@@ -74,7 +78,18 @@ function(input, output, session) {
      selectInput("geography_name", "Geography Name", choices = geography_names)
    })
    
-   # Reactive Function to Filter the geography (if needed)
+   ##### Output: Stats Content below map
+   output$geography_calc <- renderUI({
+     
+     # for multi-line text, use renderUI instead of rendertext
+     geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
+     str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
+     str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
+     HTML(paste(geography_display, str1, str2, sep = '<br/>'))
+     
+   })
+   
+   ##### Reactive Function: Filter the geography (if needed)
     geography <- reactive({
      
       # Begin Empty
@@ -89,24 +104,48 @@ function(input, output, session) {
      # Return the specific geographical boundaries 
      print(geography_selected[(geography_selected[[column]] == input$geography_name),])
    })
-   
-  hin.clip <- reactive({
-   st_intersection(hin, geography())
-  })
   
-  pc.clip <- reactive({
-   st_intersection(pc,geography())
-  })
-   
+  ##### Function: Buffer boundary by a distance in ft, return to wgs84
+  geom_buff <- function(boundary, ft) {
+    geom_nad83 <- st_transform(boundary, 2229) # Convert to NAD83
+    geom_nad83 <- st_buffer(geom_nad83, ft) # Buffer
+    geom_wgs84 <- st_transform(geom_nad83, 4326) # Convert back to wgs84
+    return(geom_wgs84)
+  }
+    
+  ##### Function: Clip to selected boundary
+  geom_clip <- function(segment) {
+    st_intersection(segment,geography())
+  }
+  
+  
+  ##### Function: Segment length in NAD83 Mi
+  nad83_calc <- function(segment) {
+    
+    # NULL case
+    if (length(segment$geometry) == 0)
+      return(0)
+    
+    # Create NAD83 / California Zone 5 Version of the clipped HIN
+    seg_nad83 <- st_transform(segment, 2229)
+    
+    # Get NAD83 length (ft), sum all geometries, convert to mi
+    seg_length <- round((as.numeric(sum(st_length(seg_nad83$geometry))) * 0.000189394), digits = 2) 
+    
+    # Return final length
+    return(seg_length)
+  }
+  
+  ##### Reactive Function: Map object that depends on the selections
   map <- reactive({ leaflet() %>%
-      addProviderTiles(providers$Stamen.TonerLite,
-                       options = providerTileOptions(noWrap = TRUE)
+      addProviderTiles(providers$Stamen.TonerLite
+                       #options = providerTileOptions(noWrap = TRUE)
       ) %>%
       
       # Add the boundary
       addPolygons(
-        data = geography()
-        #fill = FALSE,
+        data = geography(),
+        fill = FALSE
         #label = ~DISTRICT
       ) %>%
       
@@ -115,7 +154,7 @@ function(input, output, session) {
         color = '#f44242',
         weight = 3,
         opacity = 1,
-        data = hin.clip(),
+        data = st_intersection(hin, geom_buff(geography(),50)), # buffer geography by 50ft & clip
         label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
       ) %>%
       
@@ -124,69 +163,44 @@ function(input, output, session) {
         color = '#0E016F',
         weight = 3,
         opacity = 1,
-        data = pc.clip()
-      )
+        data = st_intersection(pc, geom_buff(geography(),50)) # buffer geography by 50ft & clip
+      ) %>%
+    
+      # Add LAPD Killed
+      addCircleMarkers(
+        radius = 3,
+        fill = TRUE,
+        color = 'red',
+        opacity = 1,
+        data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
+      ) %>%
+    
+      # Add LAPD SI
+      addCircleMarkers(
+        radius = 3,
+        fill = TRUE,
+        color = 'orange',
+        opacity = 1,
+        data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '2'),],geography())
+    )
+    
+    
   })
     # # Set Zoom Options
     # map <- map %>% mapOptions(zoomToLimits = "always")
     # 
     # # Generate the map
     # map
-    
 
-  # Render the Leaflet Map
+
+  # Render the Leaflet Map (based on reactive map object)
   output$vzmap <- renderLeaflet({
     map()
+    #print(hin_nad83.clip())
   })
-  #   
-  #   
-  #   renderLeaflet({
-  # 
-  #   # Run geography function to return selected geography
-  #   geography <- geography()
-  # 
-  #   if (length(geography) == 0)
-  #     return(NULL)
-  #   
-  # 
-  #   map <- leaflet() %>%
-  #     addProviderTiles(providers$Stamen.TonerLite,
-  #                      options = providerTileOptions(noWrap = TRUE)
-  #     ) %>%
-  #     
-  #     # Add the boundary
-  #     addPolygons(
-  #       data = geography
-  #       #fill = FALSE,
-  #       #label = ~DISTRICT
-  #     ) %>%
-  #     
-  #     # Add filtered HIN
-  #     addPolylines(
-  #       color = '#f44242',
-  #       weight = 3,
-  #       opacity = 1,
-  #       data = hin.clip(),
-  #       label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)
-  #     ) %>%
-  #    
-  #    # Add filtered PC
-  #    addPolylines(
-  #      color = '#0E016F',
-  #      weight = 3,
-  #      opacity = 1,
-  #      data = pc.clip()
-  #    )
-  # 
-  #   # Set Zoom Options
-  #   map <- map %>% mapOptions(zoomToLimits = "always")
-  #   
-  #   # Generate the map
-  #   map
-  # 
-  # })
+
   
-  # Generate the Report
+  ##### Generate the Report
   output$report <- downloadHandler(
     filename = 'report.html',
     content = function(file) {
@@ -210,8 +224,8 @@ function(input, output, session) {
       params <- list(goegraphy_type = input$geography_type,
                      geography_name = input$geography_name,
                      map = geography(),
-                     hin = hin.clip(),
-                     pc = pc.clip()
+                     hin = geom_clip(hin),
+                     pc = geom_clip(pc)
                      )
       
       # Knit the document, passing in the 'params' list, and eval it in a
