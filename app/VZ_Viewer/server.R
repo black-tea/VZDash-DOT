@@ -195,8 +195,12 @@ function(input, output, session) {
           fill = TRUE,
           color = 'orange',
           opacity = 1,
-          #data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
-          data = lapd_si[geography(),]
+          data = lapd_si[geography(),],
+          popup = ~paste0('DR#: ',dr_no, '<br>',
+                          'Date: ', date_occ, '<br>',
+                          'Pedestrian Inv: ', ped_inv, '<br>',
+                          'Bicyclist Inv: ', bike_inv, '<br>'
+          )
         )
     } 
     
@@ -208,8 +212,12 @@ function(input, output, session) {
           fill = TRUE,
           color = 'red',
           opacity = 1,
-          #data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
-          data = lapd_fatal[geography(),]
+          data = lapd_fatal[geography(),],
+          popup = ~paste0('DR#: ',dr_no, '<br>',
+                          'Date: ', date_occ, '<br>',
+                          'Pedestrian Inv: ', ped_inv, '<br>',
+                          'Bicyclist Inv: ', bike_inv, '<br>'
+                          )
         )
     }
     
