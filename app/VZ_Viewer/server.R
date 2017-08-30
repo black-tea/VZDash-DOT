@@ -39,6 +39,9 @@ cpa_boundaries <- st_as_sf(cpa_boundaries)
 nc_boundaries <- st_as_sf(nc_boundaries)
 lapd_collisions <- st_as_sf(lapd_collisions)
 
+lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
+lapd_si <- lapd_collisions %>% filter(collision_ == '2')
+
 # When we setup the postgres, this is where i will run the connection script
 
 
@@ -164,26 +167,7 @@ function(input, output, session) {
         weight = 3,
         opacity = 1,
         data = st_intersection(pc, geom_buff(geography(),50)) # buffer geography by 50ft & clip
-      ) %>%
-    
-      # Add LAPD Killed
-      addCircleMarkers(
-        radius = 3,
-        fill = TRUE,
-        color = 'red',
-        opacity = 1,
-        data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
-      ) %>%
-    
-      # Add LAPD SI
-      addCircleMarkers(
-        radius = 3,
-        fill = TRUE,
-        color = 'orange',
-        opacity = 1,
-        data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '2'),],geography())
-    )
-    
+      )
     
   })
     # # Set Zoom Options
@@ -197,6 +181,38 @@ function(input, output, session) {
   output$vzmap <- renderLeaflet({
     map()
     #print(hin_nad83.clip())
+  })
+  
+  # Observe Event: Adding LAPD KSI to Map
+  observeEvent(input$geography_name, {
+    proxy <- leafletProxy("vzmap")
+    
+    # Evaluate to check for any LAPD SI in area; if so, plot
+    if(nrow(lapd_si[geography(),]) > 0){
+      proxy %>% 
+        addCircleMarkers(
+          radius = 3,
+          fill = TRUE,
+          color = 'orange',
+          opacity = 1,
+          #data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
+          data = lapd_si[geography(),]
+        )
+    } 
+    
+    # Evaluate to check for any LAPD fatals in area; if so, plot
+    if(nrow(lapd_fatal[geography(),]) > 0){
+      proxy %>% 
+        addCircleMarkers(
+          radius = 3,
+          fill = TRUE,
+          color = 'red',
+          opacity = 1,
+          #data = st_intersection(lapd_collisions[(lapd_collisions$collision_ == '1'),],geography())
+          data = lapd_fatal[geography(),]
+        )
+    }
+    
   })
 
   
