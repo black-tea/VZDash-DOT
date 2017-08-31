@@ -222,6 +222,28 @@ function(input, output, session) {
     }
     
   })
+  
+  # later change to reactiveEvent
+  observeEvent(input$geography_name, {
+    
+    print("hello")
+    
+    # going to have to reformat the ped/bike inv (right now in two separate columns)
+    #once I mutate, add 'inv' column to 'group_by' argument
+    hi <- lapd_collisions %>%
+      mutate(mode = if_else(
+        ped_inv == 'Y', 'Ped',
+          if_else(
+            bike_inv == 'Y', 'Bike',
+              'Other/?'
+          )
+      )) %>%
+      group_by(mode) %>%
+      tally(sort=FALSE)
+      #crosstab(mode,collision_)
+    
+    print(hi)
+  })
 
   
   ##### Generate the Report
