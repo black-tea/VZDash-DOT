@@ -231,13 +231,7 @@ function(input, output, session) {
     # going to have to reformat the ped/bike inv (right now in two separate columns)
     #once I mutate, add 'inv' column to 'group_by' argument
     hi <- lapd_collisions %>%
-      mutate(mode = if_else(
-        ped_inv == 'Y', 'Ped',
-          if_else(
-            bike_inv == 'Y', 'Bike',
-              'Other/?'
-          )
-      )) %>%
+      mutate(mode = if_else(ped_inv == 'Y', factor('Ped'), if_else(bike_inv == 'Y', factor('Bike'), factor(NA)))) %>%
       group_by(mode) %>%
       tally(sort=FALSE)
       #crosstab(mode,collision_)
