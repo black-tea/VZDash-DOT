@@ -30,3 +30,6 @@ levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
 # Ultimately, what I need to do is 'coalesce' the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
 
+data(tli)
+library(xtable)
+xtable(tli[1:10,])

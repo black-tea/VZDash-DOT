@@ -16,7 +16,12 @@ body <- dashboardBody(
            # Map Viewer
            box(width = NULL, solidHeader = TRUE,
                leafletOutput("vzmap", height = 500)
-           ),
+               ),
+           
+           # Output crash table
+           box(width = NULL,
+               tableOutput('lapd_summary')
+               ),
            
            # Basic Output Statistics
            box(width = NULL,

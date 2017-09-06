@@ -14,6 +14,8 @@ library(mapview)
 library(webshot)
 library(htmlwidgets)
 library(units)
+library(xtable)
+library(gmodels)
 
 # Set WD
 work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -41,6 +43,16 @@ lapd_collisions <- st_as_sf(lapd_collisions)
 
 lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
 lapd_si <- lapd_collisions %>% filter(collision_ == '2')
+
+##### Combine Bike / Ped columns into one column for crosstabs
+# This formula (below) replaces the 'Y' factor with the 'bike' factor
+levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
+levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
+# This formula (below) replaces the 'Y' factor with the 'ped' factor
+levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
+levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
+# Ultimately, what I need to do is 'coalesce' the two columns into one
+lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
 
 # When we setup the postgres, this is where i will run the connection script
 
@@ -224,20 +236,29 @@ function(input, output, session) {
   })
   
   # later change to reactiveEvent
-  observeEvent(input$geography_name, {
-    
-    print("hello")
-    
-    # going to have to reformat the ped/bike inv (right now in two separate columns)
-    #once I mutate, add 'inv' column to 'group_by' argument
-    hi <- lapd_collisions %>%
-      mutate(mode = if_else(ped_inv == 'Y', factor('Ped'), if_else(bike_inv == 'Y', factor('Bike'), factor(NA)))) %>%
-      group_by(mode) %>%
-      tally(sort=FALSE)
-      #crosstab(mode,collision_)
-    
-    print(hi)
-  })
+  # observeEvent(input$geography_name, {
+  #   
+  #   # Create X-Tabs Table, filter by selected geography
+  #   mode_xtabs <- table(lapd_collisions[geography(),]$mode, lapd_collisions[geography(),]$collision_)
+  #   xtable(mode_xtabs)
+  #     
+  # })
+
+  
+  output$lapd_summary <- renderTable({
+
+    # Filter by selected geography
+    # Create x-tabs frequency table
+    # Use as.data.frame.matrix to solidify x-tabs structure
+    as.data.frame.matrix(table(lapd_collisions[geography(),]$mode,
+                               lapd_collisions[geography(),]$collision_,
+                               exclude=NULL),
+                         row.names = c('Ped','Bike','Other'))
+    },
+    spacing = 'xs',
+    rownames = TRUE,
+    caption = "Hello",
+    caption.placement = getOption("xtable.caption.placement,","top"))
 
   
   ##### Generate the Report
