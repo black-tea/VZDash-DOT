@@ -43,18 +43,26 @@ body <- dashboardBody(
     ),
     
     # Right-hand column
-    column(width = 3,
-           box(width = NULL, #status = "warning",
-               uiOutput("geography_typeSelect")
-              ),
-           box(width = NULL, #status = "warning",
-               uiOutput("geography_nameSelect")
-              ),
-           downloadButton("report","Generate Report")
-           
+    column(width = 3, wellPanel(
+      
+      # Select Geography Type
+      uiOutput("geography_typeSelect"),
+      
+      # Select Geography Name
+      uiOutput("geography_nameSelect"),
+      
+      # Date Range Filter
+      dateRangeInput(inputId = 'dateRange',
+                     label = 'Date Range',
+                     start = '2017-01-01',
+                     end = Sys.Date(),
+                     separator = ' - ',
+                     format = "mm/dd/yy")
+    ),
+    
+    # Generate a Report
+    downloadButton("report","Generate Report")
     )
-    
-    
     
   )
 )
