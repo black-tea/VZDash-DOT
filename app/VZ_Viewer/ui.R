@@ -3,10 +3,23 @@
 library(shinydashboard)
 library(leaflet)
 
+## Header
 header <- dashboardHeader(
   title = "VZ View"
 )
 
+## Sidebar Content
+sidebar <- dashboardSidebar(
+  sidebarMenu(
+    menuItem("Citywide Collisions", tabName="citywide", icon = icon("bar-chart")),
+    menuItem("Area / Corridor Collisions", tabName="AreaFilter", icon = icon("map")),
+    menuItem("Speed Survey Status", tabName="Surveys", icon = icon("pencil-square-o")),
+    menuItem("BSS PCI Status", tabName="BSS", icon=icon("truck"))
+    
+  )
+)
+
+## Body Layout
 body <- dashboardBody(
   fluidRow(
     
@@ -48,6 +61,7 @@ body <- dashboardBody(
 
 dashboardPage(
   header,
-  dashboardSidebar(disable = TRUE),
-  body
+  sidebar,
+  body,
+  skin='red'
 )
