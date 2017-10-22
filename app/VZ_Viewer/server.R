@@ -44,9 +44,6 @@ nc_boundaries <- st_as_sf(nc_boundaries)
 lapd_collisions <- st_as_sf(lapd_collisions)
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
-lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
-lapd_si <- lapd_collisions %>% filter(collision_ == '2')
-
 ##### Combine Bike / Ped columns into one column for crosstabs
 # This formula (below) replaces the 'Y' factor with the 'bike' factor
 levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
@@ -54,8 +51,20 @@ levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
 # This formula (below) replaces the 'Y' factor with the 'ped' factor
 levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
 levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
-# zCoalesce the two columns into one
+# Coalesce the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
+
+lapd_collisions <- lapd_collisions %>%
+  
+  # Rename the severity column
+  rename(severity = collision_) %>%
+  
+  # Rename the level values so they make sense on the table
+  recode("PDO" = 0,
+         "Fatal" = 1,
+         "Severe" = 2,
+         "Other Vis" = 3,
+         "Complaint" = 4)
 
 # When we setup the postgres, this is where i will run the connection script
 
@@ -173,8 +182,8 @@ function(input, output, session) {
   output$vzmap <- renderLeaflet({
     
     # Get reactive value of lapd_collisions
-    lapd_fatal <- lapd_collisions_r() %>% filter(collision_ == '1')
-    lapd_si <- lapd_collisions_r() %>% filter(collision_ == '2')
+    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
+    lapd_si <- lapd_collisions_r() %>% filter(severity == '2')
     
     map <- leaflet() %>%
       
@@ -248,7 +257,7 @@ function(input, output, session) {
     # Create x-tabs frequency table
     # Use as.data.frame.matrix to solidify x-tabs structure
     as.data.frame.matrix(table(lapd_collisions_r()$mode,
-                               lapd_collisions_r()$collision_,
+                               lapd_collisions_r()$severity,
                                exclude=NULL),
                          row.names = c('Ped','Bike','Other'))
     },
