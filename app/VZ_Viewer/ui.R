@@ -33,12 +33,13 @@ body <- dashboardBody(
            
            # Output crash table
            box(width = NULL,
-               tableOutput('lapd_summary')
-               ),
-           
-           # Basic Output Statistics
-           box(width = NULL,
-               htmlOutput("geography_calc"))
+               title = "Collision Summary",
+               tableOutput('lapd_summary'))
+           #     ),
+           # 
+           # # Basic Output Statistics
+           # box(width = NULL,
+           #     htmlOutput("geography_calc"))
 
     ),
     

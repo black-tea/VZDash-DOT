@@ -17,6 +17,7 @@ library(units)
 library(xtable)
 library(gmodels)
 library(rgdal)
+library(tidyr)
 
 # Set WD
 work_dir <- "C:/Users/Tim/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -46,26 +47,19 @@ lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
 ##### Combine Bike / Ped columns into one column for crosstabs
 # This formula (below) replaces the 'Y' factor with the 'bike' factor
-levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
-levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
+levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "Bike"
+levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'Ped')
 # This formula (below) replaces the 'Y' factor with the 'ped' factor
-levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
-levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
+levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "Ped"
+levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'Bike')
 # Coalesce the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
 
 lapd_collisions <- lapd_collisions %>%
   
   # Rename the severity column
-  rename(severity = collision_) %>%
+  rename(severity = collision_) 
   
-  # Rename the level values so they make sense on the table
-  recode("PDO" = 0,
-         "Fatal" = 1,
-         "Severe" = 2,
-         "Other Vis" = 3,
-         "Complaint" = 4)
-
 # When we setup the postgres, this is where i will run the connection script
 
 
@@ -105,16 +99,16 @@ function(input, output, session) {
      selectInput("geography_name", "Geography Name", choices = geography_names)
    })
    
-   ##### Output: Stats Content below map
-   output$geography_calc <- renderUI({
-     
-     # for multi-line text, use renderUI instead of rendertext
-     geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
-     str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
-     str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
-     HTML(paste(geography_display, str1, str2, sep = '<br/>'))
-     
-   })
+   # ##### Output: Stats Content below map
+   # output$geography_calc <- renderUI({
+   #   
+   #   # for multi-line text, use renderUI instead of rendertext
+   #   geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
+   #   str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
+   #   str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
+   #   HTML(paste(geography_display, str1, str2, sep = '<br/>'))
+   #   
+   # })
 
   
   ##### Reactive Function: Filter the geography (if needed)
@@ -157,24 +151,6 @@ function(input, output, session) {
   ##### Function: Clip to selected boundary
   geom_clip <- function(segment) {
     st_intersection(segment,geography())
-  }
-  
-  
-  ##### Function: Segment length in NAD83 Mi
-  nad83_calc <- function(segment) {
-    
-    # NULL case
-    if (length(segment$geometry) == 0)
-      return(0)
-    
-    # Create NAD83 / California Zone 5 Version of the clipped HIN
-    seg_nad83 <- st_transform(segment, 2229)
-    
-    # Get NAD83 length (ft), sum all geometries, convert to mi
-    seg_length <- round((as.numeric(sum(st_length(seg_nad83$geometry))) * 0.000189394), digits = 2) 
-    
-    # Return final length
-    return(seg_length)
   }
   
 
@@ -253,18 +229,25 @@ function(input, output, session) {
 
   output$lapd_summary <- renderTable({
 
-    # Filter by selected geography
-    # Create x-tabs frequency table
-    # Use as.data.frame.matrix to solidify x-tabs structure
-    as.data.frame.matrix(table(lapd_collisions_r()$mode,
-                               lapd_collisions_r()$severity,
-                               exclude=NULL),
-                         row.names = c('Ped','Bike','Other'))
-    },
-    spacing = 'xs',
-    rownames = TRUE,
-    caption = "Hello",
-    caption.placement = getOption("xtable.caption.placement,","top"))
+    lapd_collisions_r() %>%
+      group_by(mode, severity) %>%
+      tally() %>%
+      st_set_geometry(NULL) %>%
+      spread(severity, n)
+    })
+    
+    # # Filter by selected geography
+    # # Create x-tabs frequency table
+    # # Use as.data.frame.matrix to solidify x-tabs structure
+    # as.data.frame.matrix(table(lapd_collisions_r()$mode,
+    #                            lapd_collisions_r()$severity,
+    #                            exclude=NULL),
+    #                      row.names = c('Ped','Bike','Other'))
+    # },
+    # spacing = 'xs',
+    # rownames = TRUE,
+    # caption = "Hello",
+    # caption.placement = getOption("xtable.caption.placement,","top"))
   
   
   ##### Generate the Report
