@@ -18,6 +18,7 @@ library(xtable)
 library(gmodels)
 library(rgdal)
 library(tidyr)
+library(ggplot2)
 
 # Set WD
 work_dir <- "C:/Users/Tim/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
@@ -54,17 +55,77 @@ levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "
 levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'Bike')
 # Coalesce the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
-
-lapd_collisions <- lapd_collisions %>%
-  
-  # Rename the severity column
-  rename(severity = collision_) 
+lapd_collisions <- lapd_collisions %>% rename(severity = collision_)
   
 # When we setup the postgres, this is where i will run the connection script
 
+# Prep Collision Data for Dashboard
+FatalCt <- lapd_collisions %>%
+  filter(severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+PedFatalCt <- lapd_collisions %>%
+  filter(mode == "Ped", severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+BikeFatalCt <- lapd_collisions %>%
+  filter(mode == "Bike", severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+VehFatalCt <- lapd_collisions %>%
+  filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+# Fatals by Month
+MonthlyFatals <- lapd_collisions %>%
+  filter(severity == 1) %>%
+  mutate(month = format(date_occ, "%m")) %>%
+  group_by(month) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+           
 
 function(input, output, session) {
 
+  ##### Citywide Dashboard Metrics Output
+  # KPIs
+  output$DeathsToDate <- renderValueBox({
+    valueBox(
+      FatalCt
+      ,'2017 Deaths To-Date (insert date object here)'
+      ,color = "black")  
+  })
+  output$PedDeaths <- renderValueBox({
+    valueBox(
+      PedFatalCt
+      ,'Pedestrian Deaths'
+      ,icon = icon("male",lib='font-awesome')
+      ,color = "red")  
+  })
+  output$BikeDeaths <- renderValueBox({ 
+    valueBox(
+      BikeFatalCt
+      ,'Bicycle Deaths'
+      ,icon = icon("bicycle",lib='font-awesome')
+      ,color = "yellow")  
+  })
+  output$VehDeaths <- renderValueBox({
+    valueBox(
+      VehFatalCt
+      ,'Driver / Passenger Deaths'
+      ,icon = icon("car",lib='font-awesome')
+      ,color = "blue")   
+  })
+  # Yearly Timeline Plot
+  output$MonthlyFatalChart <- renderPlot({
+    ggplot(data = MonthlyFatals, 
+           aes(x=month, y=n, group=1)) + 
+      geom_line() + ylab("Fatal Collisions") + 
+      xlab("Month") + theme(legend.position="bottom" 
+                              ,plot.title = element_text(size=15, face="bold")) + 
+      ggtitle("Monthly Tracking")
+  })
+  
   ##### Geography Type select input box
   output$geography_typeSelect <- renderUI({
     
