@@ -16,17 +16,21 @@ library(htmlwidgets)
 library(units)
 library(xtable)
 library(gmodels)
+library(rgdal)
+library(tidyr)
+library(ggplot2)
 
 # Set WD
-work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
+work_dir <- "C:/Users/Tim/Documents/GitHub/vzcd-shiny/app/VZ_Viewer"
 setwd(work_dir)
+print(getwd())
 
 # Dictionary of Column Names
 cols <- c('DISTRICT','NAME_ALF','NAME')
 names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 
 # Load Data
-hin <- rgdal::readOGR('data/json/High_Injury_Network.geojson', "OGRGeoJSON")
+hin <- geojsonio::geojson_read('data/json/High_Injury_Network.geojson', what = "sp")
 cd_boundaries <- rgdal::readOGR('data/shp/council_districts')
 lapd_collisions <- rgdal::readOGR('data/shp/lapd_collisions')
 pc <- rgdal::readOGR('data/shp/prioritized_corridors')
@@ -40,25 +44,88 @@ pc <- st_as_sf(pc)
 cpa_boundaries <- st_as_sf(cpa_boundaries)
 nc_boundaries <- st_as_sf(nc_boundaries)
 lapd_collisions <- st_as_sf(lapd_collisions)
-
-lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
-lapd_si <- lapd_collisions %>% filter(collision_ == '2')
+lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
 ##### Combine Bike / Ped columns into one column for crosstabs
 # This formula (below) replaces the 'Y' factor with the 'bike' factor
-levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
-levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
+levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "Bike"
+levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'Ped')
 # This formula (below) replaces the 'Y' factor with the 'ped' factor
-levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
-levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
-# Ultimately, what I need to do is 'coalesce' the two columns into one
+levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "Ped"
+levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'Bike')
+# Coalesce the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
-
+lapd_collisions <- lapd_collisions %>% rename(severity = collision_)
+  
 # When we setup the postgres, this is where i will run the connection script
 
+# Prep Collision Data for Dashboard
+FatalCt <- lapd_collisions %>%
+  filter(severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+PedFatalCt <- lapd_collisions %>%
+  filter(mode == "Ped", severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+BikeFatalCt <- lapd_collisions %>%
+  filter(mode == "Bike", severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+VehFatalCt <- lapd_collisions %>%
+  filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+# Fatals by Month
+MonthlyFatals <- lapd_collisions %>%
+  filter(severity == 1) %>%
+  mutate(month = format(date_occ, "%m")) %>%
+  group_by(month) %>%
+  st_set_geometry(NULL) %>%
+  tally()
+           
 
 function(input, output, session) {
 
+  ##### Citywide Dashboard Metrics Output
+  # KPIs
+  output$DeathsToDate <- renderValueBox({
+    valueBox(
+      FatalCt
+      ,'2017 Deaths To-Date (insert date object here)'
+      ,color = "black")  
+  })
+  output$PedDeaths <- renderValueBox({
+    valueBox(
+      PedFatalCt
+      ,'Pedestrian Deaths'
+      ,icon = icon("male",lib='font-awesome')
+      ,color = "red")  
+  })
+  output$BikeDeaths <- renderValueBox({ 
+    valueBox(
+      BikeFatalCt
+      ,'Bicycle Deaths'
+      ,icon = icon("bicycle",lib='font-awesome')
+      ,color = "yellow")  
+  })
+  output$VehDeaths <- renderValueBox({
+    valueBox(
+      VehFatalCt
+      ,'Driver / Passenger Deaths'
+      ,icon = icon("car",lib='font-awesome')
+      ,color = "blue")   
+  })
+  # Yearly Timeline Plot
+  output$MonthlyFatalChart <- renderPlot({
+    ggplot(data = MonthlyFatals, 
+           aes(x=month, y=n, group=1)) + 
+      geom_line() + ylab("Fatal Collisions") + 
+      xlab("Month") + theme(legend.position="bottom" 
+                              ,plot.title = element_text(size=15, face="bold")) + 
+      ggtitle("Monthly Tracking")
+  })
+  
   ##### Geography Type select input box
   output$geography_typeSelect <- renderUI({
     
@@ -93,32 +160,46 @@ function(input, output, session) {
      selectInput("geography_name", "Geography Name", choices = geography_names)
    })
    
-   ##### Output: Stats Content below map
-   output$geography_calc <- renderUI({
+   # ##### Output: Stats Content below map
+   # output$geography_calc <- renderUI({
+   #   
+   #   # for multi-line text, use renderUI instead of rendertext
+   #   geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
+   #   str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
+   #   str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
+   #   HTML(paste(geography_display, str1, str2, sep = '<br/>'))
+   #   
+   # })
+
+  
+  ##### Reactive Function: Filter the geography (if needed)
+  geography <- reactive({
      
-     # for multi-line text, use renderUI instead of rendertext
-     geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
-     str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
-     str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
-     HTML(paste(geography_display, str1, str2, sep = '<br/>'))
+    # Begin Empty
+    if (is.null(input$geography_name))
+      return()
      
-   })
-   
-   ##### Reactive Function: Filter the geography (if needed)
-    geography <- reactive({
-     
-      # Begin Empty
-      if (is.null(input$geography_name))
-        return()
-     
-     # Grab the selected geography type and associated name column
-     # the 'get' function grabs an object from a str
-     geography_selected <- get(input$geography_type)
-     column = cols[[input$geography_type]]
-     
-     # Return the specific geographical boundaries 
-     print(geography_selected[(geography_selected[[column]] == input$geography_name),])
-   })
+    # Grab the selected geography type and associated name column
+    # the 'get' function grabs an object from a str
+    geography_selected <- get(input$geography_type)
+    column = cols[[input$geography_type]]
+         
+    # Return the specific geographical boundaries 
+    print(geography_selected[(geography_selected[[column]] == input$geography_name),])
+  })
+  
+  ##### Reactive Function: Filter LAPD Data based on geography and input dates
+  lapd_collisions_r <- reactive({
+
+    # Geography Filter
+    lapd_collisions <- lapd_collisions[geography(),]
+
+    # Date Range Filter
+    lapd_collisions %>% filter(date_occ >= input$dateRange[1] & date_occ <= input$dateRange[2])
+
+  })
+  
+  
   
   ##### Function: Buffer boundary by a distance in ft, return to wgs84
   geom_buff <- function(boundary, ft) {
@@ -133,37 +214,26 @@ function(input, output, session) {
     st_intersection(segment,geography())
   }
   
-  
-  ##### Function: Segment length in NAD83 Mi
-  nad83_calc <- function(segment) {
+
+  # Render the Leaflet Map (based on reactive map object)
+  output$vzmap <- renderLeaflet({
     
-    # NULL case
-    if (length(segment$geometry) == 0)
-      return(0)
+    # Get reactive value of lapd_collisions
+    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
+    lapd_si <- lapd_collisions_r() %>% filter(severity == '2')
     
-    # Create NAD83 / California Zone 5 Version of the clipped HIN
-    seg_nad83 <- st_transform(segment, 2229)
-    
-    # Get NAD83 length (ft), sum all geometries, convert to mi
-    seg_length <- round((as.numeric(sum(st_length(seg_nad83$geometry))) * 0.000189394), digits = 2) 
-    
-    # Return final length
-    return(seg_length)
-  }
-  
-  ##### Reactive Function: Map object that depends on the selections
-  map <- reactive({ leaflet() %>%
-      addProviderTiles(providers$Stamen.TonerLite
-                       #options = providerTileOptions(noWrap = TRUE)
-      ) %>%
+    map <- leaflet() %>%
       
+      # Add stamen tileset - Toner Lite
+      addProviderTiles(providers$Stamen.TonerLite) %>%
+    
       # Add the boundary
       addPolygons(
         data = geography(),
         fill = FALSE
         #label = ~DISTRICT
       ) %>%
-      
+        
       # Add filtered HIN
       addPolylines(
         color = '#f44242',
@@ -181,85 +251,65 @@ function(input, output, session) {
         data = st_intersection(pc, geom_buff(geography(),50)) # buffer geography by 50ft & clip
       )
     
-  })
-    # # Set Zoom Options
-    # map <- map %>% mapOptions(zoomToLimits = "always")
-    # 
-    # # Generate the map
-    # map
-
-
-  # Render the Leaflet Map (based on reactive map object)
-  output$vzmap <- renderLeaflet({
-    map()
-    #print(hin_nad83.clip())
-  })
-  
-  # Observe Event: Adding LAPD KSI to Map
-  observeEvent(input$geography_name, {
-    proxy <- leafletProxy("vzmap")
-    
-    # Evaluate to check for any LAPD SI in area; if so, plot
-    if(nrow(lapd_si[geography(),]) > 0){
-      proxy %>% 
-        addCircleMarkers(
-          radius = 3,
-          fill = TRUE,
-          color = 'orange',
-          opacity = 1,
-          data = lapd_si[geography(),],
-          popup = ~paste0('DR#: ',dr_no, '<br>',
-                          'Date: ', date_occ, '<br>',
-                          'Pedestrian Inv: ', ped_inv, '<br>',
-                          'Bicyclist Inv: ', bike_inv, '<br>'
-          )
-        )
-    } 
-    
-    # Evaluate to check for any LAPD fatals in area; if so, plot
-    if(nrow(lapd_fatal[geography(),]) > 0){
-      proxy %>% 
-        addCircleMarkers(
-          radius = 3,
-          fill = TRUE,
-          color = 'red',
-          opacity = 1,
-          data = lapd_fatal[geography(),],
-          popup = ~paste0('DR#: ',dr_no, '<br>',
-                          'Date: ', date_occ, '<br>',
-                          'Pedestrian Inv: ', ped_inv, '<br>',
-                          'Bicyclist Inv: ', bike_inv, '<br>'
-                          )
-        )
+    # From LAPD Data, If there is at least 1 Severe Injury, add to map
+    if(nrow(lapd_si) > 0){
+      map <- addCircleMarkers(
+        map,
+        radius = 3,
+        fill = TRUE,
+        color = 'orange',
+        opacity = 1,
+        data = lapd_si,
+        popup = ~paste0('DR#: ',dr_no, '<br>',
+                        'Date: ', date_occ, '<br>',
+                        'Pedestrian Inv: ', ped_inv, '<br>',
+                        'Bicyclist Inv: ', bike_inv, '<br>')
+      )
     }
-    
-  })
-  
-  # later change to reactiveEvent
-  # observeEvent(input$geography_name, {
-  #   
-  #   # Create X-Tabs Table, filter by selected geography
-  #   mode_xtabs <- table(lapd_collisions[geography(),]$mode, lapd_collisions[geography(),]$collision_)
-  #   xtable(mode_xtabs)
-  #     
-  # })
 
-  
+    # From LAPD Data, If there is at least 1 fatal, add to map
+    if(nrow(lapd_fatal) > 0){
+      map <- addCircleMarkers(
+        map,
+        radius = 3,
+        fill = TRUE,
+        color = 'red',
+        opacity = 1,
+        data = lapd_fatal,
+        popup = ~paste0('DR#: ',dr_no, '<br>',
+                        'Date: ', date_occ, '<br>',
+                        'Pedestrian Inv: ', ped_inv, '<br>',
+                        'Bicyclist Inv: ', bike_inv, '<br>')
+      )
+    }
+
+    # Return final map
+    map
+
+  })
+
   output$lapd_summary <- renderTable({
 
-    # Filter by selected geography
-    # Create x-tabs frequency table
-    # Use as.data.frame.matrix to solidify x-tabs structure
-    as.data.frame.matrix(table(lapd_collisions[geography(),]$mode,
-                               lapd_collisions[geography(),]$collision_,
-                               exclude=NULL),
-                         row.names = c('Ped','Bike','Other'))
-    },
-    spacing = 'xs',
-    rownames = TRUE,
-    caption = "Hello",
-    caption.placement = getOption("xtable.caption.placement,","top"))
-
+    lapd_collisions_r() %>%
+      group_by(mode, severity) %>%
+      tally() %>%
+      st_set_geometry(NULL) %>%
+      spread(severity, n)
+    })
+    
+    # # Filter by selected geography
+    # # Create x-tabs frequency table
+    # # Use as.data.frame.matrix to solidify x-tabs structure
+    # as.data.frame.matrix(table(lapd_collisions_r()$mode,
+    #                            lapd_collisions_r()$severity,
+    #                            exclude=NULL),
+    #                      row.names = c('Ped','Bike','Other'))
+    # },
+    # spacing = 'xs',
+    # rownames = TRUE,
+    # caption = "Hello",
+    # caption.placement = getOption("xtable.caption.placement,","top"))
+  
   
   ##### Generate the Report
   output$report <- downloadHandler(
