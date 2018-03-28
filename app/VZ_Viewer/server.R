@@ -1,6 +1,6 @@
-####################
-# VZ Viewer Server Code
-####################
+############################
+# VZ Dashboard Server Code #
+############################
 
 ##### Setup
 library(shinydashboard)

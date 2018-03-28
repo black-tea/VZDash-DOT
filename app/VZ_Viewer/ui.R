@@ -1,20 +1,23 @@
-# VZ Viewer UI
+########################
+# VZ Dashboard UI Code #
+########################
 
 library(shinydashboard)
 library(leaflet)
 
 ## Header
 header <- dashboardHeader(
-  title = "VZ View"
+  title = "Vision Zero"
 )
 
 ## Sidebar Content
 sidebar <- dashboardSidebar(
   sidebarMenu(
-    menuItem("Citywide Collisions", tabName="citywide", icon = icon("bar-chart")),
-    menuItem("Area / Corridor Collisions", tabName="AreaFilter", icon = icon("map")),
-    menuItem("Speed Survey Status", tabName="Surveys", icon = icon("pencil-square-o")),
-    menuItem("BSS PCI Status", tabName="BSS", icon=icon("truck"))
+    menuItem("Citywide Stats", tabName="citywide", icon = icon("bar-chart")),
+    menuItem("Project Delivery", tabName="ProjectDelivery", icon = icon("bar-chart")),
+    menuItem("By Council District", tabName="AreaFilter", icon = icon("map"))#,
+    #menuItem("Speed Survey Status", tabName="Surveys", icon = icon("pencil-square-o")),
+    #menuItem("BSS PCI Status", tabName="BSS", icon=icon("truck"))
     
   )
 )
