@@ -21,7 +21,7 @@ library(tidyr)
 library(ggplot2)
 
 # Set WD
-work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny"
+work_dir <- "C:/Users/Tim/Documents/GitHub/vzcd-shiny"
 setwd(work_dir)
 
 # Dictionary of Column Names
@@ -29,13 +29,19 @@ cols <- c('DISTRICT','NAME_ALF','NAME')
 names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 
 # Load Data
-hin <- rgdal::readOGR('data/High_Injury_Network.geojson', "OGRGeoJSON")
+#hin <- rgdal::readOGR('data/High_Injury_Network.geojson', "OGRGeoJSON")
 #hin <- rgdal::readOGR('data/hin')
-cd_boundaries <- rgdal::readOGR('data/council_districts')
-lapd_collisions <- rgdal::readOGR('data/lapd_collisions')
-pc <- rgdal::readOGR('data/prioritized_corridors')
-cpa_boundaries <- rgdal::readOGR('data/community_planning_areas')
-nc_boundaries <- rgdal::readOGR('data/neighborhood_councils')
+hin <- read_sf('data/High_Injury_Network.geojson')
+#cd_boundaries <- rgdal::readOGR('data/council_districts')
+cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
+#lapd_collisions <- rgdal::readOGR('data/lapd_collisions')
+lapd_collisions <- read_sf('data/lapd_collisions/collisions.shp')
+#pc <- rgdal::readOGR('data/prioritized_corridors')
+pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
+#cpa_boundaries <- rgdal::readOGR('data/community_planning_areas')
+cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
+#nc_boundaries <- rgdal::readOGR('data/neighborhood_councils')
+nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
 
 # Reformat sp objects to sf objects
 hin <- st_as_sf(hin)
@@ -63,18 +69,6 @@ lapd_collisions <- lapd_collisions %>% rename(severity = collision_)
 # When we setup the postgres, this is where i will run the connection script
 
 # Prep Collision Data for Dashboard
-FatalCt <- lapd_collisions %>%
-  filter(severity == 1) %>%
-  st_set_geometry(NULL) %>%
-  tally()
-PedFatalCt <- lapd_collisions %>%
-  filter(mode == "Ped", severity == 1) %>%
-  st_set_geometry(NULL) %>%
-  tally()
-BikeFatalCt <- lapd_collisions %>%
-  filter(mode == "Bike", severity == 1) %>%
-  st_set_geometry(NULL) %>%
-  tally()
 VehFatalCt <- lapd_collisions %>%
   filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
   st_set_geometry(NULL) %>%
@@ -108,23 +102,23 @@ function(input, output, session) {
   # KPIs
   output$DeathsToDate <- renderValueBox({
     valueBox(
-      FatalCt
-      ,'2017 Deaths To-Date (insert date object here)'
-      ,color = "black")  
+      lapd_collisions %>% filter(severity == 1) %>% st_set_geometry(NULL) %>% tally(),
+      '2017 Deaths To-Date (insert date object here)',
+      color = "black")  
   })
   output$PedDeaths <- renderValueBox({
     valueBox(
-      PedFatalCt
-      ,'Pedestrian Deaths'
-      ,icon = icon("male",lib='font-awesome')
-      ,color = "red")  
+      lapd_collisions %>% filter(severity == 1, mode == "Ped") %>% st_set_geometry(NULL) %>% tally(),
+      'Pedestrian Deaths',
+      icon = icon("male",lib='font-awesome'),
+      color = "red")  
   })
   output$BikeDeaths <- renderValueBox({ 
     valueBox(
-      BikeFatalCt
-      ,'Bicyclist Deaths'
-      ,icon = icon("bicycle",lib='font-awesome')
-      ,color = "yellow")  
+      lapd_collisions %>% filter(severity == 1, mode == "Bike") %>% st_set_geometry(NULL) %>% tally(),
+      'Bicyclist Deaths',
+      icon = icon("bicycle",lib='font-awesome'),
+      color = "yellow")  
   })
   output$VehDeaths <- renderValueBox({
     valueBox(
@@ -297,49 +291,42 @@ function(input, output, session) {
     map <- leaflet() %>%
       addProviderTiles(providers$Stamen.TonerLite)
     
-    if (!is.null(input$geography_name)) {
-      map <- map %>%
-        addPolygons(
-          data = geography(),
-          fill = FALSE
-        )
-    }
-    
     map
   })
-
-  # Area Filter Map Observer #1, should also include fit bounds
-  # observe({
-  #   if(!is.null(geography())){
-  #     leafletProxy("vzmap") %>%
-  #       addPolygons(
-  #         data = geography(),
-  #         fill = FALSE
-  #       )
-  #   } else{
-  #     return(NULL)
-  #   }
-  # })
   
   # Area Filter Map Observer #2
   observe({
-    leafletProxy("vzmap") %>%
-      clearShapes() %>%
-      clearMarkers() %>%
-      # Add filtered HIN
-      addPolylines(
-        color = '#f44242',
-        weight = 3,
-        opacity = 1,
-        data = hin_r(),
-        label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
-      # Add filtered PC
-      addPolylines(
-        color = '#0E016F',
-        weight = 3,
-        opacity = 1,
-        data = pc_r()
-      ) 
+    
+    geography_r <- geography()
+    
+    if (!is.null(input$geography_name)) {
+      leafletProxy("vzmap") %>%
+        clearShapes() %>%
+        clearMarkers() %>%
+        addPolygons(
+          data = geography(),
+          fill = FALSE
+        ) %>%
+        # Add filtered HIN
+        addPolylines(
+          color = '#f44242',
+          weight = 3,
+          opacity = 1,
+          data = hin_r(),
+          label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
+        # Add filtered PC
+        addPolylines(
+          color = '#0E016F',
+          weight = 3,
+          opacity = 1,
+          data = pc_r()
+        ) %>%
+        fitBounds(lng1 = as.double(st_bbox(geography_r)[1]),
+                  lat1 = as.double(st_bbox(geography_r)[2]),
+                  lng2 = as.double(st_bbox(geography_r)[3]),
+                  lat2 = as.double(st_bbox(geography_r)[4])
+        )
+    }
   })
   
   
