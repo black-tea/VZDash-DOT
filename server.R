@@ -90,6 +90,20 @@ MonthlyFatals <- lapd_collisions %>%
 
 function(input, output, session) {
   
+  ### Functions 
+  # Buffer boundary by a distance in ft, return to wgs84
+  geom_buff <- function(boundary, ft) {
+    geom_nad83 <- st_transform(boundary, 2229) # Convert to NAD83
+    geom_nad83 <- st_buffer(geom_nad83, ft) # Buffer
+    geom_wgs84 <- st_transform(geom_nad83, 4326) # Convert back to wgs84
+    return(geom_wgs84)
+  }
+  
+  # Clip to selected boundary
+  geom_clip <- function(segment) {
+    st_intersection(segment,geography())
+  }
+  
   ##### Citywide Dashboard Metrics Output
   # KPIs
   output$DeathsToDate <- renderValueBox({
@@ -148,7 +162,6 @@ function(input, output, session) {
     if (is.null(input$geography_type))
       return()
     
-    
     # Grab the selected geography type and associated name column
     geography_selected <- get(input$geography_type)
     
@@ -163,19 +176,8 @@ function(input, output, session) {
     selectInput("geography_name", "Geography Name", choices = geography_names)
   })
   
-  # ##### Output: Stats Content below map
-  # output$geography_calc <- renderUI({
-  #   
-  #   # for multi-line text, use renderUI instead of rendertext
-  #   geography_display <- paste(input$geography_type, ": ", paste(input$geography_name))
-  #   str1 <- paste("Miles of HIN: ", toString(nad83_calc(geom_clip(hin))))
-  #   str2 <- paste("Miles of PC: ", toString(nad83_calc(geom_clip(pc))))
-  #   HTML(paste(geography_display, str1, str2, sep = '<br/>'))
-  #   
-  # })
-  
-  
-  ##### Reactive Function: Filter the geography (if needed)
+  ### Reactive Values
+  # Filter geography, if needed
   geography <- reactive({
     
     # Begin Empty
@@ -188,39 +190,26 @@ function(input, output, session) {
     column = cols[[input$geography_type]]
     
     # Return the specific geographical boundaries 
-    print(geography_selected[(geography_selected[[column]] == input$geography_name),])
+    return(geography_selected[(geography_selected[[column]] == input$geography_name),])
   })
   
-  ##### Reactive Function: Filter LAPD Data based on geography and input dates
+  # Filter lapd collisions, if needed
   lapd_collisions_r <- reactive({
-    
-    # Geography Filter
-    lapd_collisions <- lapd_collisions[geography(),]
-    
-    # Date Range Filter
-    lapd_collisions %>% filter(date_occ >= input$dateRange[1] & date_occ <= input$dateRange[2])
-    
-  })
-  
-  
-  
-  ##### Function: Buffer boundary by a distance in ft, return to wgs84
-  geom_buff <- function(boundary, ft) {
-    geom_nad83 <- st_transform(boundary, 2229) # Convert to NAD83
-    geom_nad83 <- st_buffer(geom_nad83, ft) # Buffer
-    geom_wgs84 <- st_transform(geom_nad83, 4326) # Convert back to wgs84
-    return(geom_wgs84)
-  }
-  
-  ##### Function: Clip to selected boundary
-  geom_clip <- function(segment) {
-    st_intersection(segment,geography())
-  }
+    # Filter if AreaFilter tab is activated
+    if((input$tabs == 'AreaFilter')&(!is.null(input$geography_name))){
+      # Geography Filter
+      lapd_collisions <- lapd_collisions[geography(),]
+      # Date Range Filter
+      lapd_collisions %>% filter(date_occ >= input$dateRange[1] & date_occ <= input$dateRange[2])
+    } else {
+      return(lapd_collisions)
+    }
+  })  
   
   # HIN reactive variable
   hin_r <- reactive({
     # Clip for Area Filter
-    if((input$tabs == 'AreaFilter')&(!is.null(input$geography_name))){
+    if((input$tabs == 'AreaFilter')&(!is.null(geography()))){
       return(st_intersection(hin, geom_buff(geography(),50)))
     } else {
       return(hin)
@@ -237,23 +226,69 @@ function(input, output, session) {
     }   
   })
   
+  ### Maps
   # Map Object for Project Delivery Tab
   output$projectmap <- renderLeaflet({
+    
+    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
+    
+    # Define color palette
+    lbls = c( 'Fatal Collisions','High-Injury Network','Priority Corridors')
+    pal <- colorFactor(
+      palette = c('#f44242','#f44242', '#0E016F'),
+      domain = lbls
+      )
+    
+    # Create map
     map <- leaflet() %>%
       addProviderTiles(providers$Stamen.TonerLite) %>%
+      setView(lng = -118.329327,
+              lat = 34.0546143,
+              zoom = 12) %>%
       # Add HIN
       addPolylines(
-        color = '#f44242',
-        weight = 3,
+        #color = '#f44242',
+        color = ~pal('High-Injury Network'),
+        weight = 2,
         opacity = 1,
         data = hin_r(),
+        group = 'VZ Streets',
         label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
       # Add PC
       addPolylines(
-        color = '#0E016F',
-        weight = 3,
+        #color = '#0E016F',
+        color = ~pal('Priority Corridors'),
+        weight = 2,
         opacity = 1,
-        data = pc_r())
+        data = pc_r(),
+        group = 'VZ Streets') %>%
+      addLegend(
+        position = "bottomleft",
+        pal = pal,
+        values = lbls
+      ) %>%
+      addLayersControl(
+        overlayGroups = c('VZ Streets', 'Collisions YTD'),
+        options = layersControlOptions(collapsed = FALSE)
+      )
+    
+    # From LAPD Data, If there is at least 1 fatal, add to map
+    if(nrow(lapd_fatal) > 0){
+      map <- addCircleMarkers(
+        map,
+        radius = 1,
+        fill = TRUE,
+        color = ~pal('Fatal Collisions'),
+        opacity = 1,
+        data = lapd_fatal,
+        group = 'Collisions YTD',
+        popup = ~paste0('DR#: ',dr_no, '<br>',
+                        'Date: ', date_occ, '<br>',
+                        'Pedestrian Inv: ', ped_inv, '<br>',
+                        'Bicyclist Inv: ', bike_inv, '<br>')
+      )
+    }
+  
     map
   })
   
@@ -261,10 +296,32 @@ function(input, output, session) {
   output$vzmap <- renderLeaflet({
     map <- leaflet() %>%
       addProviderTiles(providers$Stamen.TonerLite)
+    
+    if (!is.null(input$geography_name)) {
+      map <- map %>%
+        addPolygons(
+          data = geography(),
+          fill = FALSE
+        )
+    }
+    
     map
   })
+
+  # Area Filter Map Observer #1, should also include fit bounds
+  # observe({
+  #   if(!is.null(geography())){
+  #     leafletProxy("vzmap") %>%
+  #       addPolygons(
+  #         data = geography(),
+  #         fill = FALSE
+  #       )
+  #   } else{
+  #     return(NULL)
+  #   }
+  # })
   
-  # Map Observer
+  # Area Filter Map Observer #2
   observe({
     leafletProxy("vzmap") %>%
       clearShapes() %>%
@@ -282,20 +339,14 @@ function(input, output, session) {
         weight = 3,
         opacity = 1,
         data = pc_r()
-      )
-      
+      ) 
   })
+  
   
     # # Get reactive value of lapd_collisions
     # lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
     # lapd_si <- lapd_collisions_r() %>% filter(severity == '2')
     #   
-    #   # Add the boundary
-    #   addPolygons(
-    #     data = geography(),
-    #     fill = FALSE
-    #     #label = ~DISTRICT
-    #   ) %>%
     #   
     #   
     # 
@@ -316,7 +367,7 @@ function(input, output, session) {
     #   )
     # }
     # 
-    # # From LAPD Data, If there is at least 1 fatal, add to map
+    # From LAPD Data, If there is at least 1 fatal, add to map
     # if(nrow(lapd_fatal) > 0){
     #   map <- addCircleMarkers(
     #     map,
@@ -333,14 +384,14 @@ function(input, output, session) {
     # }
     
   
-  # output$lapd_summary <- renderTable({
-  #   
-  #   lapd_collisions_r() %>%
-  #     group_by(mode, severity) %>%
-  #     tally() %>%
-  #     st_set_geometry(NULL) %>%
-  #     spread(severity, n)
-  # })
+  output$lapd_summary <- renderTable({
+
+    lapd_collisions_r() %>%
+      group_by(mode, severity) %>%
+      tally() %>%
+      st_set_geometry(NULL) %>%
+      spread(severity, n)
+  })
   
   # # Filter by selected geography
   # # Create x-tabs frequency table

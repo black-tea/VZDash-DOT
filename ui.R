@@ -57,7 +57,7 @@ body <- dashboardBody(
             fluidRow(
               box(#status = "warning",
                   width = 12,
-                  leafletOutput("projectmap", height = 500)
+                  leafletOutput("projectmap", height = 700)
                   #"boxcontent"
                   )
             )
