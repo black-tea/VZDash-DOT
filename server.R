@@ -44,12 +44,12 @@ cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
 nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
 
 # Reformat sp objects to sf objects
-hin <- st_as_sf(hin)
-cd_boundaries <- st_as_sf(cd_boundaries)
-pc <- st_as_sf(pc)
-cpa_boundaries <- st_as_sf(cpa_boundaries)
-nc_boundaries <- st_as_sf(nc_boundaries)
-lapd_collisions <- st_as_sf(lapd_collisions)
+# hin <- st_as_sf(hin)
+# cd_boundaries <- st_as_sf(cd_boundaries)
+# pc <- st_as_sf(pc)
+# cpa_boundaries <- st_as_sf(cpa_boundaries)
+# nc_boundaries <- st_as_sf(nc_boundaries)
+# lapd_collisions <- st_as_sf(lapd_collisions)
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
 lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
