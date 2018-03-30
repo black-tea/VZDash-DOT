@@ -21,7 +21,7 @@ library(tidyr)
 library(ggplot2)
 
 # Set WD
-work_dir <- "C:/Users/Tim/Documents/GitHub/vzcd-shiny"
+work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny"
 setwd(work_dir)
 
 # Dictionary of Column Names
@@ -29,27 +29,17 @@ cols <- c('DISTRICT','NAME_ALF','NAME')
 names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 
 # Load Data
-#hin <- rgdal::readOGR('data/High_Injury_Network.geojson', "OGRGeoJSON")
-#hin <- rgdal::readOGR('data/hin')
 hin <- read_sf('data/High_Injury_Network.geojson')
-#cd_boundaries <- rgdal::readOGR('data/council_districts')
 cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
-#lapd_collisions <- rgdal::readOGR('data/lapd_collisions')
-lapd_collisions <- read_sf('data/lapd_collisions/collisions.shp')
-#pc <- rgdal::readOGR('data/prioritized_corridors')
+#lapd_collisions <- read_sf('data/lapd_collisions/collisions.shp')
 pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
-#cpa_boundaries <- rgdal::readOGR('data/community_planning_areas')
 cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
-#nc_boundaries <- rgdal::readOGR('data/neighborhood_councils')
 nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
 
-# Reformat sp objects to sf objects
-# hin <- st_as_sf(hin)
-# cd_boundaries <- st_as_sf(cd_boundaries)
-# pc <- st_as_sf(pc)
-# cpa_boundaries <- st_as_sf(cpa_boundaries)
-# nc_boundaries <- st_as_sf(nc_boundaries)
-# lapd_collisions <- st_as_sf(lapd_collisions)
+# Access socrata api for collisions
+# limit to 1000 collisions
+d = read_sf('https://data.lacity.org/resource/k8cc-2d49.geojson')
+
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
 lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
