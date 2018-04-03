@@ -31,7 +31,7 @@ names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 # Load Data
 hin <- read_sf('data/High_Injury_Network.geojson')
 cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
-#lapd_collisions <- read_sf('data/lapd_collisions/collisions.shp')
+lapd_collisions <- read_sf('data/lapd_collisions/collisions.geojson')
 pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
 cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
 nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
@@ -42,8 +42,8 @@ d = read_sf('https://data.lacity.org/resource/k8cc-2d49.geojson')
 
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 
-lapd_fatal <- lapd_collisions %>% filter(collision_ == '1')
-lapd_si <- lapd_collisions %>% filter(collision_ == '2')
+lapd_fatal <- lapd_collisions %>% filter(severity == '1')
+lapd_si <- lapd_collisions %>% filter(severity == '2')
 
 ##### Combine Bike / Ped columns into one column for crosstabs
 # This formula (below) replaces the 'Y' factor with the 'bike' factor
@@ -54,7 +54,7 @@ levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "
 levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
 # Coalesce the two columns into one
 lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
-lapd_collisions <- lapd_collisions %>% rename(severity = collision_)
+lapd_collisions <- lapd_collisions %>% rename(severity = severity)
 
 # When we setup the postgres, this is where i will run the connection script
 
@@ -98,24 +98,24 @@ function(input, output, session) {
   })
   output$PedDeaths <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1, mode == "Ped") %>% st_set_geometry(NULL) %>% tally(),
+      lapd_collisions %>% filter(severity == 1, ped_inv == 'Y') %>% st_set_geometry(NULL) %>% tally(),
       'Pedestrian Deaths',
       icon = icon("male",lib='font-awesome'),
       color = "red")  
   })
   output$BikeDeaths <- renderValueBox({ 
     valueBox(
-      lapd_collisions %>% filter(severity == 1, mode == "Bike") %>% st_set_geometry(NULL) %>% tally(),
+      lapd_collisions %>% filter(severity == 1, bike_inv == 'Y') %>% st_set_geometry(NULL) %>% tally(),
       'Bicyclist Deaths',
       icon = icon("bicycle",lib='font-awesome'),
       color = "yellow")  
   })
   output$VehDeaths <- renderValueBox({
     valueBox(
-      VehFatalCt
-      ,'Passenger Deaths'
-      ,icon = icon("car",lib='font-awesome')
-      ,color = "blue")   
+      lapd_collisions %>% filter(severity == 1, is.na(bike_inv), is.na(ped_inv)) %>% st_set_geometry(NULL) %>% tally(),
+      'Passenger Deaths',
+      icon = icon("car",lib='font-awesome'),
+      color = "blue")   
   })
   # Yearly Timeline Plot
   output$MonthlyFatalChart <- renderPlot({
