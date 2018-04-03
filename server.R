@@ -28,48 +28,54 @@ setwd(work_dir)
 cols <- c('DISTRICT','NAME_ALF','NAME')
 names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 
-# Load Data
-hin <- read_sf('data/High_Injury_Network.geojson')
-cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
+### Load Data
+# Collisions
 lapd_collisions <- read_sf('data/lapd_collisions/collisions.geojson')
+# VZ network files
+hin <- read_sf('data/High_Injury_Network.geojson')
 pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
+# Boundary files
+cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
 cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
 nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
-
-# Access socrata api for collisions
-# limit to 1000 collisions
-d = read_sf('https://data.lacity.org/resource/k8cc-2d49.geojson')
+# Infrastructure
+highvis_xwalks <- read_sf('data/crosswalks/crosswalks.shp')
+lpi <- read_sf('data/lpi/lpi.shp')
+paddle_signs <- read_sf('data/paddle_signs/paddle_signs.shp')
+pafb <- read_sf('data/pafb/pafb.shp')
+ped_islands <- read_sf('data/ped_islands/ped_islands.shp')
+scrambles <- read_sf('data/scrambles/scrambles.shp')
+int_tight <- read_sf('data/int_tightening/int_tightening.shp')
 
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
-
 lapd_fatal <- lapd_collisions %>% filter(severity == '1')
 lapd_si <- lapd_collisions %>% filter(severity == '2')
 
 ##### Combine Bike / Ped columns into one column for crosstabs
 # This formula (below) replaces the 'Y' factor with the 'bike' factor
-levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
-levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
+#levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
+#levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
 # This formula (below) replaces the 'Y' factor with the 'ped' factor
-levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
-levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
+#levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
+#levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
 # Coalesce the two columns into one
-lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
-lapd_collisions <- lapd_collisions %>% rename(severity = severity)
+#lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
+#lapd_collisions <- lapd_collisions %>% rename(severity = severity)
 
 # When we setup the postgres, this is where i will run the connection script
 
 # Prep Collision Data for Dashboard
-VehFatalCt <- lapd_collisions %>%
-  filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
-  st_set_geometry(NULL) %>%
-  tally()
-# Fatals by Month
-MonthlyFatals <- lapd_collisions %>%
-  filter(severity == 1) %>%
-  mutate(month = format(date_occ, "%m")) %>%
-  group_by(month) %>%
-  st_set_geometry(NULL) %>%
-  tally()
+# VehFatalCt <- lapd_collisions %>%
+#   filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
+#   st_set_geometry(NULL) %>%
+#   tally()
+# # Fatals by Month
+# MonthlyFatals <- lapd_collisions %>%
+#   filter(severity == 1) %>%
+#   mutate(month = format(date_occ, "%m")) %>%
+#   group_by(month) %>%
+#   st_set_geometry(NULL) %>%
+#   tally()
 
 
 function(input, output, session) {
@@ -98,21 +104,21 @@ function(input, output, session) {
   })
   output$PedDeaths <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1, ped_inv == 'Y') %>% st_set_geometry(NULL) %>% tally(),
+      lapd_collisions %>% filter(severity == 1, mode == 'Ped') %>% st_set_geometry(NULL) %>% tally(),
       'Pedestrian Deaths',
       icon = icon("male",lib='font-awesome'),
       color = "red")  
   })
   output$BikeDeaths <- renderValueBox({ 
     valueBox(
-      lapd_collisions %>% filter(severity == 1, bike_inv == 'Y') %>% st_set_geometry(NULL) %>% tally(),
+      lapd_collisions %>% filter(severity == 1, mode == 'Bike') %>% st_set_geometry(NULL) %>% tally(),
       'Bicyclist Deaths',
       icon = icon("bicycle",lib='font-awesome'),
       color = "yellow")  
   })
   output$VehDeaths <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1, is.na(bike_inv), is.na(ped_inv)) %>% st_set_geometry(NULL) %>% tally(),
+      lapd_collisions %>% filter(severity == 1, is.na(mode)) %>% st_set_geometry(NULL) %>% tally(),
       'Passenger Deaths',
       icon = icon("car",lib='font-awesome'),
       color = "blue")   
@@ -217,9 +223,9 @@ function(input, output, session) {
     lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
     
     # Define color palette
-    lbls = c( 'Fatal Collisions','High-Injury Network','Priority Corridors')
+    lbls = c( 'Fatal Collision','High-Injury Network','High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Priority Corridor','Scramble Crosswalk')
     pal <- colorFactor(
-      palette = c('#f44242','#f44242', '#0E016F'),
+      palette = c('#f44242','#f44242','#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#0E016F','#96C0E6'),
       domain = lbls
       )
     
@@ -241,18 +247,81 @@ function(input, output, session) {
       # Add PC
       addPolylines(
         #color = '#0E016F',
-        color = ~pal('Priority Corridors'),
+        color = ~pal('Priority Corridor'),
         weight = 2,
         opacity = 1,
         data = pc_r(),
         group = 'VZ Streets') %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('High-Visibility Crosswalk'),
+        fillColor = ~pal('High-Visibility Crosswalk'),
+        opacity = 1,
+        data = highvis_xwalks,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Interim Intersection Tightening'),
+        fillColor = ~pal('Interim Intersection Tightening'),
+        opacity = 1,
+        data = int_tight,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Leading Pedestrian Interval'),
+        fillColor = ~pal('Leading Pedestrian Interval'),
+        opacity = 1,
+        data = lpi,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Paddle Sign'),
+        fillColor = ~pal('Paddle Sign'),
+        opacity = 1,
+        data = paddle_signs,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Pedestrian-Activated Flashing Beacon'),
+        fillColor = ~pal('Pedestrian-Activated Flashing Beacon'),
+        opacity = 1,
+        data = pafb,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Pedestrian Refuge Island'),
+        fillColor = ~pal('Pedestrian Refuge Island'),
+        opacity = 1,
+        data = ped_islands,
+        group = 'Projects - Complete'
+      ) %>%
+      addCircleMarkers(
+        radius = 0.2,
+        fill = TRUE,
+        color = ~pal('Scramble Crosswalk'),
+        fillColor = ~pal('Scramble Crosswalk'),
+        opacity = 1,
+        data = scrambles,
+        group = 'Projects - Complete'
+      ) %>%
       addLegend(
         position = "bottomleft",
         pal = pal,
         values = lbls
       ) %>%
       addLayersControl(
-        overlayGroups = c('VZ Streets', 'Collisions YTD'),
+        overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete', 'Projects - In Progress'),
         options = layersControlOptions(collapsed = FALSE)
       )
     
@@ -262,14 +331,14 @@ function(input, output, session) {
         map,
         radius = 1,
         fill = TRUE,
-        color = ~pal('Fatal Collisions'),
+        color = ~pal('Fatal Collision'),
+        fillColor = ~pal('Fatal Collision'),
         opacity = 1,
         data = lapd_fatal,
         group = 'Collisions YTD',
         popup = ~paste0('DR#: ',dr_no, '<br>',
                         'Date: ', date_occ, '<br>',
-                        'Pedestrian Inv: ', ped_inv, '<br>',
-                        'Bicyclist Inv: ', bike_inv, '<br>')
+                        'Involved with: ', mode, '<br>')
       )
     }
   

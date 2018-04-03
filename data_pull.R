@@ -36,9 +36,9 @@ collisions <- collisions %>%
                               grepl('3025',mocodes) ~ 3,
                               grepl('3026',mocodes) ~ 4,
                               grepl('3028',mocodes) ~ 0)) %>%
-  mutate(ped_inv = ifelse(any(sapply(ped_inv_codes, grepl, mocodes)),'Y',NA)) %>%
-  mutate(bike_inv = ifelse(any(sapply(bike_inv_codes, grepl, mocodes)),'Y',NA)) %>%
-  mutate(mc_inv = ifelse(any(sapply(mc_inv_codes, grepl, mocodes)),'Y',NA)) %>%
+  mutate(mode = case_when(any(sapply(ped_inv_codes, grepl, mocodes)) ~ 'Ped',
+                          any(sapply(bike_inv_codes, grepl, mocodes)) ~ 'Bike',
+                          any(sapply(mc_inv_codes, grepl, mocodes)) ~ 'MC')) %>%
   mutate(hit_and_run = ifelse(any(sapply(hit_and_run_codes, grepl, mocodes)),'Y',NA)) %>%
   # remove rowwise operation
   ungroup() %>%
