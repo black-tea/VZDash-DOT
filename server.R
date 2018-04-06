@@ -21,8 +21,8 @@ library(tidyr)
 library(ggplot2)
 
 # Set WD
-work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny"
-setwd(work_dir)
+#work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny"
+#setwd(work_dir)
 
 # Dictionary of Column Names
 cols <- c('DISTRICT','NAME_ALF','NAME')
