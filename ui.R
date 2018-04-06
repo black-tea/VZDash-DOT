@@ -34,22 +34,22 @@ body <- dashboardBody(
     # Key Indicator Content
     tabItem(tabName = "kpi",
             fluidRow(
-              valueBoxOutput("DeathsToDate")
+              valueBoxOutput("DeathsToDate", width = 6),
+              valueBoxOutput("PedDeaths", width = 6)
             ),
             fluidRow(
-              valueBoxOutput("PedDeaths"),
-              valueBoxOutput("BikeDeaths"),
-              valueBoxOutput("VehDeaths")
-            ),
-            fluidRow( 
-              box(
-                #title = "Monthly Fatals"
-                #,status = "primary"
-                #,solidHeader = TRUE 
-                #,collapsible = TRUE, 
-                plotOutput("MonthlyFatalChart", height = "400px")
-              )
-            )
+              valueBoxOutput("BikeDeaths", width = 6),
+              valueBoxOutput("VehDeaths", width = 6))
+            # ),
+            # fluidRow(
+            #   box(
+            #     #title = "Monthly Fatals"
+            #     #,status = "primary"
+            #     #,solidHeader = TRUE
+            #     #,collapsible = TRUE,
+            #     plotOutput("MonthlyFatalChart", height = "400px")
+            #   )
+            # )
     ),
 
     # Key Indicator Content
@@ -75,10 +75,16 @@ body <- dashboardBody(
                          leafletOutput("vzmap", height = 500)
                      ),
                      
+                     tabBox(
+                       width = NULL,
+                       tabPanel("Collisions",tableOutput('lapd_summary')),
+                       tabPanel("Improvements", tableOutput('infrastructure_summary'))
+                     )
+                     
                      # Output crash table
-                     box(width = NULL,
-                         title = "Collision Summary",
-                         tableOutput('lapd_summary'))
+                     # box(width = NULL,
+                     #     title = "Collision Summary",
+                     #     tableOutput('lapd_summary'))
                      #     ),
                      # 
                      # # Basic Output Statistics
@@ -103,10 +109,10 @@ body <- dashboardBody(
                                end = Sys.Date(),
                                separator = ' - ',
                                format = "mm/dd/yy")
-              ),
+              )#,
               
               # Generate a Report
-              downloadButton("report","Generate Report")
+              #downloadButton("report","Generate Report")
               )
               
             )

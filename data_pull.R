@@ -46,5 +46,6 @@ collisions <- collisions %>%
   st_sf()
 
 # Export to geojson (future will dump to sqlite + spatailite)
-write_sf(collisions, 'data/lapd_collisions/collisions.geojson')
+#write_sf(collisions, 'data/lapd_collisions/collisions.geojson')
+st_write(collisions, 'data/lapd_collisions/collisions.geojson',delete_dsn = TRUE)
 

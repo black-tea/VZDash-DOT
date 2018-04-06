@@ -31,6 +31,7 @@ names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 ### Load Data
 # Collisions
 lapd_collisions <- read_sf('data/lapd_collisions/collisions.geojson')
+collisions_2017 <- read_sf('data/lapd_collisions/2017collisions.geojson')
 # VZ network files
 hin <- read_sf('data/High_Injury_Network.geojson')
 pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
@@ -38,6 +39,7 @@ pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
 cd_boundaries <- read_sf('data/council_districts/CnclDist_July2012_wgs84.shp')
 cpa_boundaries <- read_sf('data/community_planning_areas/CPA_wgs84.shp')
 nc_boundaries <- read_sf('data/neighborhood_councils/LACITY_NEIGHBORHOOD_COUNCILS.shp')
+city_boundary <- read_sf('data/city_boundary/city_boundary.shp')
 # Infrastructure
 highvis_xwalks <- read_sf('data/crosswalks/crosswalks.shp')
 lpi <- read_sf('data/lpi/lpi.shp')
@@ -47,29 +49,35 @@ ped_islands <- read_sf('data/ped_islands/ped_islands.shp')
 scrambles <- read_sf('data/scrambles/scrambles.shp')
 int_tight <- read_sf('data/int_tightening/int_tightening.shp')
 
-lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
+highvis_xwalks2 <- highvis_xwalks %>% select() %>% mutate(Type = 'High-Visibility Crosswalk')
+lpi2 <- lpi %>% select() %>% mutate(Type = 'Leading Pedestrian Interval')
+paddle_signs2 <- paddle_signs %>% select() %>% mutate(Type = 'Paddle Sign')
+pafb2 <- pafb %>% select() %>% mutate(Type = 'Pedestrian-Activated Flashing Beacon')
+ped_islands2 <- ped_islands %>% select() %>% mutate(Type = 'Pedestrian Refuge Island')
+scrambles2 <- scrambles %>% select() %>% mutate(Type = 'Scramble Crosswalk')
+int_tight2 <- int_tight %>% select() %>% mutate(Type = 'Interim Intersection Tightening')
+
+infrastructure <- rbind(highvis_xwalks2, lpi2, paddle_signs2, pafb2, ped_islands2, scrambles2, int_tight2)
+infrastructure <- infrastructure %>% mutate(Type = as.factor(Type))
+cd_boundaries$DISTRICT <- c('07','12','06','03','02','05','04','13','14','11','01','10','09','08','15')
+
+### Other Data Preparation
 lapd_fatal <- lapd_collisions %>% filter(severity == '1')
 lapd_si <- lapd_collisions %>% filter(severity == '2')
+# Prep for Initial Dashboard Calculations
+lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
+collisions_2017$date_occ <- as.Date(collisions_2017$date_occ)
+current_date <- format(max(lapd_collisions$date_occ), format='%m-%d')
+ytd_fatal_2018 <- lapd_collisions %>% filter(severity == 1) %>% st_set_geometry(NULL) %>% tally()
+ytd_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
+ytd_ped_fatal_2018 <- lapd_collisions %>% filter(severity == 1, mode == 'Ped') %>% st_set_geometry(NULL) %>% tally()
+ytd_ped_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, mode == 'Ped', date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
+ytd_bike_fatal_2018 <- lapd_collisions %>% filter(severity == 1, mode == 'Bike') %>% st_set_geometry(NULL) %>% tally()
+ytd_bike_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, mode == 'Bike', date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
+ytd_veh_fatal_2018 <- lapd_collisions %>% filter(severity == 1, is.na(mode)) %>% st_set_geometry(NULL) %>% tally()
+ytd_veh_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, is.na(mode), date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
 
-##### Combine Bike / Ped columns into one column for crosstabs
-# This formula (below) replaces the 'Y' factor with the 'bike' factor
-#levels(lapd_collisions$bike_inv)[match('Y',levels(lapd_collisions$bike_inv))] <- "bike"
-#levels(lapd_collisions$bike_inv) <- c(levels(lapd_collisions$bike_inv),'ped')
-# This formula (below) replaces the 'Y' factor with the 'ped' factor
-#levels(lapd_collisions$ped_inv)[match('Y',levels(lapd_collisions$ped_inv))] <- "ped"
-#levels(lapd_collisions$ped_inv) <- c(levels(lapd_collisions$ped_inv),'bike')
-# Coalesce the two columns into one
-#lapd_collisions$mode <- coalesce(lapd_collisions$ped_inv, lapd_collisions$bike_inv)
-#lapd_collisions <- lapd_collisions %>% rename(severity = severity)
-
-# When we setup the postgres, this is where i will run the connection script
-
-# Prep Collision Data for Dashboard
-# VehFatalCt <- lapd_collisions %>%
-#   filter(!mode %in% c("Ped","Bike"), severity == 1) %>%
-#   st_set_geometry(NULL) %>%
-#   tally()
-# # Fatals by Month
+# Fatals by Month
 # MonthlyFatals <- lapd_collisions %>%
 #   filter(severity == 1) %>%
 #   mutate(month = format(date_occ, "%m")) %>%
@@ -98,32 +106,44 @@ function(input, output, session) {
   # KPIs
   output$DeathsToDate <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1) %>% st_set_geometry(NULL) %>% tally(),
-      '2017 Deaths To-Date (insert date object here)',
+      paste0(toString(ytd_fatal_2018),' Fatalities YTD (',toString(current_date),')'),
+      paste0(toString(ytd_fatal_2017),
+             ' YTD 2017 (',
+             toString(round(((ytd_fatal_2018 - ytd_fatal_2017)/ytd_fatal_2017)*100),digits=2),
+             '%)'),
       color = "black")  
   })
   output$PedDeaths <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1, mode == 'Ped') %>% st_set_geometry(NULL) %>% tally(),
-      'Pedestrian Deaths',
+      paste0(toString(ytd_ped_fatal_2018),' Pedestrian'),
+      paste0(toString(ytd_ped_fatal_2017),
+             ' YTD 2017 (',
+             toString(round(((ytd_ped_fatal_2018 - ytd_ped_fatal_2017)/ytd_ped_fatal_2017)*100),digits=2),
+             '%)'),
       icon = icon("male",lib='font-awesome'),
       color = "red")  
   })
   output$BikeDeaths <- renderValueBox({ 
     valueBox(
-      lapd_collisions %>% filter(severity == 1, mode == 'Bike') %>% st_set_geometry(NULL) %>% tally(),
-      'Bicyclist Deaths',
+      paste0(toString(ytd_bike_fatal_2018),' Bicyclist'),
+      paste0(toString(ytd_bike_fatal_2017),
+             ' YTD 2017 (',
+             toString(round(((ytd_bike_fatal_2018 - ytd_bike_fatal_2017)/ytd_bike_fatal_2017)*100),digits=2),
+             '%)'),
       icon = icon("bicycle",lib='font-awesome'),
       color = "yellow")  
   })
   output$VehDeaths <- renderValueBox({
     valueBox(
-      lapd_collisions %>% filter(severity == 1, is.na(mode)) %>% st_set_geometry(NULL) %>% tally(),
-      'Passenger Deaths',
+      paste0(toString(ytd_veh_fatal_2018),' Passenger'),
+      paste0(toString(ytd_veh_fatal_2017),
+             ' YTD 2017 (',
+             toString(round(((ytd_veh_fatal_2018 - ytd_veh_fatal_2017)/ytd_veh_fatal_2017)*100),digits=2),
+             '%)'),
       icon = icon("car",lib='font-awesome'),
       color = "blue")   
   })
-  # Yearly Timeline Plot
+  # Monthly Timeline Plot
   output$MonthlyFatalChart <- renderPlot({
     ggplot(data = MonthlyFatals, 
            aes(x=month, y=n, group=1)) + 
@@ -183,6 +203,16 @@ function(input, output, session) {
     return(geography_selected[(geography_selected[[column]] == input$geography_name),])
   })
   
+  # Filter infrastructure, if needed
+  infrastructure_r <- reactive({
+    if((input$tabs == 'AreaFilter')&(!is.null(input$geography_name))){
+      # Geography Filter
+      infrastructure <- infrastructure[geography(),]
+    } else {
+      return(infrastructure)
+    }
+  })
+  
   # Filter lapd collisions, if needed
   lapd_collisions_r <- reactive({
     # Filter if AreaFilter tab is activated
@@ -231,10 +261,16 @@ function(input, output, session) {
     
     # Create map
     map <- leaflet() %>%
-      addProviderTiles(providers$Stamen.TonerLite) %>%
+      addProviderTiles(providers$CartoDB.Positron) %>%
       setView(lng = -118.329327,
               lat = 34.0546143,
               zoom = 12) %>%
+      # Add City Boundary
+      addPolylines(
+        color = '#C0C0C0',
+        weight = 2,
+        opacity = 1,
+        data = city_boundary) %>%
       # Add HIN
       addPolylines(
         #color = '#f44242',
@@ -321,8 +357,8 @@ function(input, output, session) {
         values = lbls
       ) %>%
       addLayersControl(
-        overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete', 'Projects - In Progress'),
-        options = layersControlOptions(collapsed = FALSE)
+        overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete'),
+        options = layersControlOptions(collapsed = TRUE)
       )
     
     # From LAPD Data, If there is at least 1 fatal, add to map
@@ -347,46 +383,122 @@ function(input, output, session) {
   
   # Map Object for Area Filter
   output$vzmap <- renderLeaflet({
-    map <- leaflet() %>%
-      addProviderTiles(providers$Stamen.TonerLite)
     
-    map
-  })
-  
-  # Area Filter Map Observer #2
-  observe({
-    
+    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
     geography_r <- geography()
+    infrastructure_r <- infrastructure_r()
+    
+    # Define color palette
+    #lbls = c( 'High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Scramble Crosswalk')
+    colors = c('#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#96C0E6')
+    names(colors) = c( 'High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Scramble Crosswalk')
+    pal <- colorFactor(
+      #palette = c('#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#96C0E6'),
+      domain = levels(factor(infrastructure_r$Type)),
+      palette = colors[levels(factor(infrastructure_r$Type))]
+    )
+    
+    map <- leaflet() %>%
+      addProviderTiles(providers$CartoDB.Positron)
     
     if (!is.null(input$geography_name)) {
-      leafletProxy("vzmap") %>%
-        clearShapes() %>%
-        clearMarkers() %>%
+      map <- map %>%
         addPolygons(
-          data = geography(),
-          fill = FALSE
-        ) %>%
+          data = geography_r,
+          fill = FALSE) %>%
         # Add filtered HIN
         addPolylines(
           color = '#f44242',
           weight = 3,
           opacity = 1,
           data = hin_r(),
-          label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
+          label = ~paste0(STNAME, ": ", FROM_, " to ", TO_),
+          group = 'VZ Streets') %>%
         # Add filtered PC
         addPolylines(
           color = '#0E016F',
           weight = 3,
           opacity = 1,
-          data = pc_r()
-        ) %>%
-        fitBounds(lng1 = as.double(st_bbox(geography_r)[1]),
-                  lat1 = as.double(st_bbox(geography_r)[2]),
-                  lng2 = as.double(st_bbox(geography_r)[3]),
-                  lat2 = as.double(st_bbox(geography_r)[4])
+          data = pc_r(),
+          group = 'VZ Streets')
+    }
+    
+    # From LAPD Data, If there is at least 1 fatal, add to map
+    if(nrow(lapd_fatal) > 0){
+      map <- addCircleMarkers(
+        map,
+        radius = 1,
+        fill = TRUE,
+        color = '#f44242',
+        fillColor = '#f44242',
+        opacity = 1,
+        data = lapd_fatal,
+        group = 'Collisions YTD',
+        popup = ~paste0('DR#: ',dr_no, '<br>',
+                        'Date: ', date_occ, '<br>',
+                        'Involved with: ', mode, '<br>')
+      )
+    }
+    
+    # If there is at least one piece of infrastructure, add to map
+    if(nrow(infrastructure_r) > 0){
+      map <- map %>%
+        addCircleMarkers(
+          radius = 1,
+          fill = TRUE,
+          data = infrastructure_r,
+          color = ~pal(infrastructure_r$Type),
+          fillColor = ~pal(infrastructure_r$Type),
+          opacity = 1,
+          group = 'Projects - Complete') %>%
+        addLegend(
+          position = "bottomleft",
+          pal = pal,
+          values = levels(factor(infrastructure_r$Type))) %>%
+        addLayersControl(
+          overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete'),
+          options = layersControlOptions(collapsed = TRUE)
         )
     }
+      
+        
+    map
   })
+  
+  # # Area Filter Map Observer #2
+  # observe({
+  #   
+  #   geography_r <- geography()
+  #   
+  #   if (!is.null(input$geography_name)) {
+  #     leafletProxy("vzmap") %>%
+  #       clearShapes() %>%
+  #       clearMarkers() %>%
+  #       addPolygons(
+  #         data = geography(),
+  #         fill = FALSE
+  #       ) %>%
+  #       # Add filtered HIN
+  #       addPolylines(
+  #         color = '#f44242',
+  #         weight = 3,
+  #         opacity = 1,
+  #         data = hin_r(),
+  #         label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
+  #       # Add filtered PC
+  #       addPolylines(
+  #         color = '#0E016F',
+  #         weight = 3,
+  #         opacity = 1,
+  #         data = pc_r()
+  #       ) %>%
+  #       fitBounds(lng1 = as.double(st_bbox(geography_r)[1]),
+  #                 lat1 = as.double(st_bbox(geography_r)[2]),
+  #                 lng2 = as.double(st_bbox(geography_r)[3]),
+  #                 lat2 = as.double(st_bbox(geography_r)[4])
+  #       )
+  #   }
+  # })
   
   
     # # Get reactive value of lapd_collisions
@@ -439,18 +551,13 @@ function(input, output, session) {
       spread(severity, n)
   })
   
-  # # Filter by selected geography
-  # # Create x-tabs frequency table
-  # # Use as.data.frame.matrix to solidify x-tabs structure
-  # as.data.frame.matrix(table(lapd_collisions_r()$mode,
-  #                            lapd_collisions_r()$severity,
-  #                            exclude=NULL),
-  #                      row.names = c('Ped','Bike','Other'))
-  # },
-  # spacing = 'xs',
-  # rownames = TRUE,
-  # caption = "Hello",
-  # caption.placement = getOption("xtable.caption.placement,","top"))
+  output$infrastructure_summary <- renderTable({
+    
+    infrastructure_r() %>%
+      st_set_geometry(NULL) %>%
+      group_by(Type) %>%
+      summarise(Count = n()) 
+  })
   
   
   ##### Generate the Report
