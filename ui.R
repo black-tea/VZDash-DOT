@@ -5,6 +5,16 @@
 library(shinydashboard)
 library(leaflet)
 
+##### Packages from IManager #####
+library(shiny)
+library(DT)
+library(leaflet)
+library(shinyjs)
+library(sf)
+library(dplyr)
+appCSS <- ".mandatory_star { color: red; }"
+##### End Packages from IManager #####
+
 ## Header
 header <- dashboardHeader(
   # Use horizontal VZ logo for title
@@ -22,14 +32,10 @@ sidebar <- dashboardSidebar(
     menuItem("Key Indicators", tabName="kpi", icon = icon("bar-chart")),
     menuItem("Map", icon = icon("map"), startExpanded = FALSE,
              menuSubItem("Citywide", tabName = "ProjectDelivery"),
-             menuSubItem("Area Filter", tabName =  'AreaFilter')
-             ),
+             menuSubItem("Area Filter", tabName =  'AreaFilter')),
     menuItem("Infrastructure", icon = icon("road"), startExpanded = FALSE,
-             menuSubItem("Add", tabName = "AddInfrastructure"),
-             menuSubItem("Manage", tabName = "ManageInfrastructure"))
-    #menuItem("Council Districts", tabName="AreaFilter", icon = icon("map"))#,
-    #menuItem("Speed Survey Status", tabName="Surveys", icon = icon("pencil-square-o")),
-    #menuItem("BSS PCI Status", tabName="BSS", icon=icon("truck"))
+             menuSubItem("Add", tabName = "AddI"),
+             menuSubItem("Manage", tabName = "ManageI"))
   )
 )
 
@@ -122,7 +128,51 @@ body <- dashboardBody(
               )
               
             )
-    )
+    ),
+    
+    # Add Infrastructure Page
+    tabItem(tabName = "AddI",
+            fluidPage(
+              shinyjs::useShinyjs(),
+              shinyjs::inlineCSS(appCSS),
+              titlePanel("New Treatment"),
+
+              div(
+                id = "form",
+                fluidRow(
+
+                  # First UI Bin
+                  column(4,
+                         uiOutput("treatment_type"),
+                         uiOutput("int_select"),
+                         conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
+                                          selectInput("TreatmentStatus", label = "Status", choices = list('Planned', 'Completed')))
+                  ),
+
+                  # Second UI Bin
+                  column(4,
+                         uiOutput("treatment_info1")
+                  ),
+
+                  # Third UI Bin
+                  column(4,
+                         uiOutput("treatment_info2"),
+                         conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
+                                          actionButton("submit", "Submit", class = "btn-primary"))
+                  )
+                ),
+
+                hr(),
+                h6(uiOutput("message"), align="center"),
+                hr(),
+
+                # Map Output
+                leafletOutput("map")
+
+              )
+
+            )
+            )
   )
 )
 

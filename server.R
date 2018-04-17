@@ -20,6 +20,100 @@ library(rgdal)
 library(tidyr)
 library(ggplot2)
 
+##### Packages from IManager #####
+library(RPostgreSQL)
+library(shiny)
+library(shinyjs)
+library(sf) # Don't use 'sf' column for queries that don't have 'geom' column
+library("googlesheets")
+##### End Packages from IManager #####
+
+##### Functions from IManager #####
+# PostGIS // NEED TO ADD FILE WITH CREDENTIALS
+sqlQuery <- function (query, type) {
+  
+  # creating DB connection object with RMysql package
+  conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+  
+  # close db connection after function call exits
+  on.exit(dbDisconnect(conn))
+  
+  # get result
+  if(type == 'table'){
+    result <- dbGetQuery(conn, query)
+  } else if(type == 'spatial'){
+    result <- st_read_db(conn, query=query)
+  }
+  
+  # return the dataframe
+  return(result)
+}
+
+addData <- function(table, data) {
+  # Connect to the database
+  conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+  # Construct the update query by looping over the data fields
+  query <- sprintf(
+    "INSERT INTO %s (%s) VALUES ('%s')",
+    table, 
+    paste(names(data), collapse = ", "),
+    paste(data, collapse = "', '")
+  )
+  # Submit the update query and disconnect
+  dbGetQuery(conn, query)
+  on.exit(dbDisconnect(conn))
+}
+
+loadData <- function() {
+  # Connect to the database
+  db <- dbConnect(SQLite(), sqlitePath)
+  # Construct the fetching query
+  query <- sprintf("SELECT * FROM %s", table)
+  # Submit the fetch query and disconnect
+  data <- dbGetQuery(db, query)
+  dbDisconnect(db)
+  data
+}
+
+# Function to update google sheets after making any changes to the DB
+gsUpdate <- function(table) {
+  # Register test google sheet that already exists
+  test_s <- gs_key('1bgkKWcvrMJXP3XOUAi_8-Z4K7k3msUYdS-yCZd_qP50')
+  query <- sprintf("SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_notes from %s", table)
+  curr_tbl <- sqlQuery(query, 'table')
+  test_s <- test_s %>%
+    gs_edit_cells(ws = 'test_edit', input = curr_tbl)#, trim = TRUE)
+}
+
+# Function to create Icons for map
+createIcon <- function(color) {
+  
+  custom_icon <- awesomeIcons(
+    icon = 'circle-o',
+    iconColor = '#ffffff',
+    library = 'fa',
+    # The markercolor is from a fixed set of color choices
+    markerColor = color
+  )
+  return(custom_icon)
+}
+
+# Formatting for Mandatory Code
+labelMandatory <- function(label) {
+  tagList(
+    label,
+    span("*", class = "mandatory_star")
+  )
+}
+##### End Functions from IManager #####
+
+##### Prep Code from IManager #####
+# Load intersections
+intersections <- sqlQuery("SELECT assetid, cl_node_id, tooltip FROM intersections",type = 'table')
+# Mandatory fields that must be filled before a user can add data
+fieldsMandatory <- c("treatment_type", "int")
+##### End Prep Code from IManager #####
+
 # Set WD
 #work_dir <- "C:/Users/dotcid034/Documents/GitHub/vzcd-shiny"
 #setwd(work_dir)
@@ -87,6 +181,272 @@ ytd_veh_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, for
 
 
 function(input, output, session) {
+  
+  ##### Server Code from IManager #####
+  ### UI Elements
+  # Treatment Type Selection
+  output$treatment_type <- renderUI({
+    
+    # Selection Input
+    selectInput("treatment_type",
+                labelMandatory("Treatment"),
+                c("",
+                  "Leading Pedestrian Interval",
+                  "Speed Feedback Sign", "Paddle Sign",
+                  "Pedestrian-Activated Flashing Beacon",
+                  "Pedestrian Refuge Island",
+                  "High-Visibility Crosswalk",
+                  "Scramble Crosswalk"))
+  })
+  
+  # Intersection Selection
+  output$int_select <- renderUI({
+    
+    # Selection Input
+    selectizeInput(inputId = "int",
+                   labelMandatory('Intersection'),
+                   choices = intersections$tooltip,
+                   selected = NULL,
+                   multiple = FALSE)
+  })
+  
+  
+  # Second UI Bin
+  output$treatment_info1 <- renderUI({
+    if(!is.null(input$treatment_type)){
+      if(input$treatment_type == 'Leading Pedestrian Interval'){
+        sliderInput("r_num_years", "Number of years using R", 0, 25, 2, ticks = FALSE)
+      } else if(input$treatment_type == 'Pedestrian Refuge Island'){
+        tagList(
+          selectInput("rfg_hsip", label = "HSIP Survey", choices = list("","Yes", "No")),
+          dateInput("rfg_designstart", label = "Design Start Date", value = ""),
+          dateInput("rfg_designfinish", label = "Design Completion Date (Plan Sent to BSS)", value = ""),
+          dateInput("rfg_constructdate", label = "Construction Completion Date", value = "")
+        )
+      } else if (input$treatment_type == 'Pedestrian-Activated Flashing Beacon'){
+        tagList(
+          selectInput("fb_roadside", label = "Roadside-Only RRFB Candidate", choices = c('','No','Yes','Yes + Mast Arm','Yes + Mast Arm or Median')),
+          selectInput("fb_beaconstatus", label = "Beacon Status", choices = c('','Field Assessment Completed', 'RRFB Activated','RRFB Activated - Mast Arm still needed')),
+          textInput("fb_flashdur", label = "Flash Duration"),
+          selectInput("fb_xwalk", label = "Existing or Proposed Crosswalk", choices = c('','Existing','Proposed'))
+        )
+      } else if (input$treatment_type == 'Speed Feedback Sign'){
+        tagList(
+          numericInput("sfs_distance", label = "Distance from Intersection (ft)", value=0),
+          selectInput("sfs_streetside", label = "Side of Street", choices = c('','N','S','E','W')),
+          selectInput("sfs_facestraffic", label = "Faces Traffic", choices = c('','N','S','E','W'))
+        )
+      }
+    }
+  })
+  
+  # Third UI Bin
+  output$treatment_info2 <- renderUI({
+    if(!is.null(input$treatment_type)){
+      if(input$treatment_type == 'Leading Pedestrian Interval'){
+        sliderInput("r_num_years", "Number of years using R", 0, 25, 2, ticks = FALSE)
+      } else if(input$treatment_type == 'Pedestrian Refuge Island'){
+        tagList(
+          dateInput("rfg_url", label = "URL to Design Plan", value = ""),
+          textAreaInput("rfg_notes", "Notes")
+        ) 
+      } else if(input$treatment_type == 'Pedestrian-Activated Flashing Beacon'){
+        tagList(
+          selectInput("fb_tcr", label = "TCR", choices = c('','No',"Yes")),
+          selectInput("fb_curb", label = "Curb Ramps Both Approaches", choices = c('','TBD','Yes')),
+          textAreaInput("fb_polenotes", label = "Poles")
+        )
+      } else if(input$treatment_type == 'Speed Feedback Sign'){
+        tagList(
+          textInput("sfs_serial","Serial No."),
+          selectInput('sfs_solar', 'Solar?', choices = c('','Yes','No')),
+          dateInput('sfs_activationdate', 'Activation Date', value = ''),
+          textAreaInput('sfs_notes', label = 'Comments')
+        )
+      }
+    }
+  })
+  
+  # Message Object
+  output$message <- renderText({rv_msg$msg})
+  
+  ### Observer focused on the input form
+  observe({
+    mandatoryFilled <-
+      vapply(fieldsMandatory,
+             function(x) {
+               !is.null(input[[x]]) && input[[x]] != ""
+             },
+             logical(1))
+    mandatoryFilled <- all(mandatoryFilled, length(rv_location$Segment) > 0)
+    
+    shinyjs::toggleState(id = "submit", condition = mandatoryFilled)
+  })
+  
+  ### Reactive Objects
+  #RV for location objects
+  rv_location <- reactiveValues(Intersection=list(),
+                                Segment=list())
+  #RV storing UI message variable
+  rv_msg <- reactiveValues()
+  
+  # Capture form input values
+  input_data <- reactive({
+    if(input$treatment_type %in% c('Speed Feedback Sign', 'Pedestrian-Activated Flashing Beacon', 'Pedestrian Refuge Island')){
+      fields <- switch(input$treatment_type,
+                       'Speed Feedback Sign' = c('sfs_distance','sfs_streetside','sfs_facestraffic','sfs_serial','sfs_solar','sfs_activationdate','sfs_notes'),
+                       'Pedestrian-Activated Flashing Beacon' = c('fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_polenotes'),
+                       'Pedestrian Refuge Island' = c('rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'))
+      # Grab values from input
+      formData <- sapply(fields, function(x) input[[x]])
+      return(formData)
+    } else {return(NULL)}
+  })
+  
+  # Reactive expression to grab intersection data based on user selection
+  intersection_r <- reactive({
+    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      int_query <- paste0("SELECT * FROM intersections WHERE tooltip=","'",toString(input$int),"'")
+      intersection_r <- sqlQuery(int_query, type = 'spatial')
+    } else {return(NULL)}
+  })
+  
+  # Reactive expression to grab cross streets from selected intersection
+  xstreet_r <- reactive({
+    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      # Grab selected intersection information
+      intersection_r <- intersection_r()
+      # Query for streets related to the intersection
+      xstreet_query = paste0("SELECT *
+                             FROM streets 
+                             WHERE int_id_fro=",intersection_r$cl_node_id," OR int_id_to=",intersection_r$cl_node_id)
+      xstreet <- sqlQuery(xstreet_query, type='spatial')
+    } else {return(NULL)}
+  })
+  
+  ### Map
+  output$map <- renderLeaflet({
+    # Map object
+    map <- leaflet() %>%
+      addProviderTiles(providers$CartoDB.Positron,
+                       options = providerTileOptions(minZoom = 10, maxZoom = 18)) %>%
+      setView(lng = -118.329327,
+              lat = 34.0546143,
+              zoom = 11) 
+  })
+  
+  # Map observer that updates based on the intersection
+  observeEvent(input$int, {
+    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      # Get intersection reactive var, clear markers, clear RV
+      intersection_r <- intersection_r()
+      rv_location$Segment <- NULL
+      proxy <- leafletProxy("map") %>%
+        clearMarkers() %>%
+        clearShapes()
+      # If there is one marker in the query, it is blue
+      if(nrow(intersection_r) == 1 && length(intersection_r) > 0) {
+        # Add intersection to RV object
+        rv_location$Intersection <- intersection_r
+        # Get cross streets
+        xstreet_r <- xstreet_r()
+        # Update message to choose a street
+        rv_msg$msg <- c('Select a Cross Street')
+        # Add intersection marker to map
+        proxy %>% addAwesomeMarkers(
+          data = intersection_r,
+          icon = createIcon('darkblue')
+        )
+        # If there is at least one related segment, add it
+        if(length(xstreet_r) > 0) {
+          proxy %>% addPolylines(
+            data = xstreet_r,
+            layerId = as.numeric(rownames(xstreet_r)),
+            color = "gray"
+          )
+        }
+        # If there is >1 marker, gray initially
+      } else if(nrow(intersection_r) > 1) {
+        proxy %>% addAwesomeMarkers(
+          data = intersection_r,
+          icon = createIcon("gray")
+        )
+        rv_msg$msg <- c('Select One Intersection Node')
+        
+      }
+      # Update the map zoom bounds
+      proxy %>% fitBounds(lng1 = as.double(st_bbox(intersection_r)[1]),
+                          lat1 = as.double(st_bbox(intersection_r)[2]),
+                          lng2 = as.double(st_bbox(intersection_r)[3]),
+                          lat2 = as.double(st_bbox(intersection_r)[4]))
+      
+      print(rv_location$Segment)
+    }
+  })
+  
+  # Map Observer based on the polyline selection
+  observeEvent(input$map_shape_click, {
+    if(!is.null(xstreet_r())){
+      # Grab ID of the shape that was clicked
+      click_id <- input$map_shape_click$id
+      # Filter polylines based on the click
+      polyline_s <- xstreet_r() %>%
+        filter(rownames(.) == click_id )
+      rv_location$Segment <- polyline_s
+      # Add selected line on top as another color
+      proxy <- leafletProxy("map") %>%
+        # Add selected line shape to map
+        addPolylines(
+          data = polyline_s,
+          layerId = "selected",
+          color = "#0066a1",
+          opacity = 1
+        )
+      # Once user has selected the street segment, becomes NULL
+      rv_msg$msg <- c('.')
+    }
+    
+  })
+  
+  # Observer controlling submission of information to database
+  observeEvent(input$submit, {
+    
+    # Create a progress notification
+    progress <- shiny::Progress$new(style = 'notification')
+    progress$set(message = "Submitting...", value = NULL)
+    on.exit(progress$close())
+    
+    # Temporarily disable submit button
+    shinyjs::disable('submit')
+    
+    # maybe add switch variable here, (for example, whether it has a segment or not)
+    
+    # Int AssetID, Int Cl_Node_ID, Int Name, Seg AssetID, Form Data, Int Geom 
+    data <- c(int_assetid = rv_location$Intersection$assetid,
+              int_clnodeid = rv_location$Intersection$cl_node_id,
+              int_name = rv_location$Intersection$tooltip,
+              seg_assetid = rv_location$Segment$assetid,
+              input_data(),
+              geom_4326 = st_as_text(rv_location$Intersection$geom))
+    
+    # Add to DB, update progress bar
+    addData(table = 'public.geom_sfs', data)
+    # Update linked spreadsheet, update progress bar
+    progress$set(detail = "Updating linked Google Sheets.")
+    gsUpdate(table = 'public.geom_sfs')
+    # Reset form & map objects, map view back to LA
+    shinyjs::reset("form")
+    rv_location$Segment <- NULL
+    proxy <- leafletProxy("map") %>%
+      clearMarkers() %>%
+      clearShapes() %>%
+      setView(lng = -118.329327,
+              lat = 34.0546143,
+              zoom = 11) 
+    
+  })
+  ##### End Server Code from IManager #####
+  
   
   ### Functions 
   # Buffer boundary by a distance in ft, return to wgs84
