@@ -20,8 +20,14 @@ sidebar <- dashboardSidebar(
     # Setting id makes input$tabs give the tabName of currently-selected tab
     id = "tabs",
     menuItem("Key Indicators", tabName="kpi", icon = icon("bar-chart")),
-    menuItem("Project Delivery", tabName="ProjectDelivery", icon = icon("road")),
-    menuItem("Council Districts", tabName="AreaFilter", icon = icon("map"))#,
+    menuItem("Map", icon = icon("map"), startExpanded = FALSE,
+             menuSubItem("Citywide", tabName = "ProjectDelivery"),
+             menuSubItem("Area Filter", tabName =  'AreaFilter')
+             ),
+    menuItem("Infrastructure", icon = icon("road"), startExpanded = FALSE,
+             menuSubItem("Add", tabName = "AddInfrastructure"),
+             menuSubItem("Manage", tabName = "ManageInfrastructure"))
+    #menuItem("Council Districts", tabName="AreaFilter", icon = icon("map"))#,
     #menuItem("Speed Survey Status", tabName="Surveys", icon = icon("pencil-square-o")),
     #menuItem("BSS PCI Status", tabName="BSS", icon=icon("truck"))
   )
