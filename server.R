@@ -57,11 +57,11 @@ sqlQueryTblData <- function (table, data) {
   
   # Construct the query
   query <- sprintf(
-    "SELECT FROM %s (%s) VALUES ('%s')",
-    table, 
+    "SELECT %s FROM %s",
     paste(names(data), collapse = ", "),
-    paste(data, collapse = "', '")
+    table
   )
+  print(query)
   
   # Submit the query and disconnect
   dbGetQuery(conn, query)
@@ -100,7 +100,7 @@ gsUpdate <- function(table, data) {
   test_s <- gs_key('1bgkKWcvrMJXP3XOUAi_8-Z4K7k3msUYdS-yCZd_qP50')
   # Edit the google sheet
   test_s <- test_s %>%
-    gs_edit_cells(ws = table, input = sqlQueryTblData(table = paste0('public.geom_',table), data))
+    gs_edit_cells(ws = 'sfs', input = sqlQueryTblData(table = paste0('public.geom_',table), data))
 }
 
 # Function to create Icons for map
@@ -262,11 +262,11 @@ function(input, output, session) {
   output$treatment_status <- renderUI({
     if(!is.null(input$treatment_type)){
       if(input$treatment_type == 'rfg'){
-        selectInput("rfg_status", label = "Status", choices = list('Planned', 'Completed'))
+        selectInput(inputId = "rfg_status", label = "Status", choices = list('Planned', 'Completed'))
       } else if(input$treatment_type == 'sfs'){
-        selectInput("sfs_status", label = "Status", choices = list('Planned', 'Completed'))
+        selectInput(inputId = "sfs_status", label = "Status", choices = list('Planned', 'Completed'))
       } else if(input$treatment_type == 'fb'){
-        selectInput("fb_status", label = "Status", choices = list('Planned', 'Completed'))
+        selectInput(inputId = "fb_status", label = "Status", choices = list('Planned', 'Completed'))
       }
     }
     
@@ -366,6 +366,7 @@ function(input, output, session) {
   input_data <- reactive({
     fields <- get(input$treatment_type)[['data_flds']]
     formData <- sapply(fields, function(x) input[[x]])
+    print(formData)
   })
   
   # Reactive expression to grab intersection data based on user selection
@@ -498,7 +499,7 @@ function(input, output, session) {
     sqlInsert(table = paste0('public.geom_',input$treatment_type), data)
     # Update linked spreadsheet, update progress bar
     progress$set(detail = "Updating linked Google Sheets.")
-    gsUpdate(input$treatment_type, data)
+    gsUpdate(input$treatment_type, input_data())
     # Reset form & map objects, map view back to LA
     shinyjs::reset("form")
     rv_location$Segment <- NULL

@@ -147,8 +147,7 @@ body <- dashboardBody(
                     column(4,
                            uiOutput("treatment_type"),
                            uiOutput("int_select"),
-                           conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
-                                            selectInput("TreatmentStatus", label = "Status", choices = list('Planned', 'Completed')))),
+                           uiOutput("treatment_status")),
   
                     # Second UI Bin
                     column(4,
