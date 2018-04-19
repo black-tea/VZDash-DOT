@@ -30,9 +30,10 @@ library("googlesheets")
 
 ##### Functions from IManager #####
 # PostGIS // NEED TO ADD FILE WITH CREDENTIALS
+# Function to run specific query on db
 sqlQuery <- function (query, type) {
   
-  # creating DB connection object with RMysql package
+  # creating DB connection object 
   conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
   
   # close db connection after function call exits
@@ -49,7 +50,25 @@ sqlQuery <- function (query, type) {
   return(result)
 }
 
-addData <- function(table, data) {
+sqlQueryTblData <- function (table, data) {
+  
+  # Connect to the database 
+  conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+  
+  # Construct the query
+  query <- sprintf(
+    "SELECT FROM %s (%s) VALUES ('%s')",
+    table, 
+    paste(names(data), collapse = ", "),
+    paste(data, collapse = "', '")
+  )
+  
+  # Submit the query and disconnect
+  dbGetQuery(conn, query)
+  on.exit(dbDisconnect(conn))
+}
+# Insert row into PostGIS table
+sqlInsert <- function(table, data) {
   # Connect to the database
   conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
   # Construct the update query by looping over the data fields
@@ -63,26 +82,25 @@ addData <- function(table, data) {
   dbGetQuery(conn, query)
   on.exit(dbDisconnect(conn))
 }
-
-loadData <- function() {
-  # Connect to the database
-  db <- dbConnect(SQLite(), sqlitePath)
-  # Construct the fetching query
-  query <- sprintf("SELECT * FROM %s", table)
-  # Submit the fetch query and disconnect
-  data <- dbGetQuery(db, query)
-  dbDisconnect(db)
-  data
-}
+# 
+# loadData <- function(table) {
+#   # Connect to the database
+#   db <- dbConnect(SQLite(), sqlitePath)
+#   # Construct the fetching query
+#   query <- sprintf("SELECT * FROM %s", table)
+#   # Submit the fetch query and disconnect
+#   data <- dbGetQuery(db, query)
+#   dbDisconnect(db)
+#   data
+# }
 
 # Function to update google sheets after making any changes to the DB
-gsUpdate <- function(table) {
+gsUpdate <- function(table, data) {
   # Register test google sheet that already exists
   test_s <- gs_key('1bgkKWcvrMJXP3XOUAi_8-Z4K7k3msUYdS-yCZd_qP50')
-  query <- sprintf("SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_notes from %s", table)
-  curr_tbl <- sqlQuery(query, 'table')
+  # Edit the google sheet
   test_s <- test_s %>%
-    gs_edit_cells(ws = 'test_edit', input = curr_tbl)#, trim = TRUE)
+    gs_edit_cells(ws = table, input = sqlQueryTblData(table = paste0('public.geom_',table), data))
 }
 
 # Function to create Icons for map
@@ -112,6 +130,26 @@ labelMandatory <- function(label) {
 intersections <- sqlQuery("SELECT assetid, cl_node_id, tooltip FROM intersections",type = 'table')
 # Mandatory fields that must be filled before a user can add data
 fieldsMandatory <- c("treatment_type", "int")
+
+# Treatment Objects
+infrastructure_vars <- c(
+  'Speed Feedback Sign' = 'sfs',
+  'Pedestrian-Activated Flashing Beacon' = 'fb',
+  'Pedestrian Refuge Island' = 'rfg'
+)
+
+sfs <- list(id = 'sfs',
+            name_lbl = 'Speed Feedback Sign',
+            data_flds = c('sfs_status','sfs_distance','sfs_streetside','sfs_facestraffic','sfs_serial','sfs_solar','sfs_activationdate','sfs_notes'),
+            data_names = c('Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date','Solar?', 'Notes')
+            )
+fb <- list(id = 'fb',
+           name_lbl = 'Pedestrian-Activated Flashing Beacon',
+           data_flds = c('fb_status','fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_notes'))
+rfg <- list(id = 'rfg',
+            name_lbl = 'Pedestrian Refuge Island',
+            data_flds = c('rfg_status','rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'))
+
 ##### End Prep Code from IManager #####
 
 # Set WD
@@ -185,19 +223,29 @@ function(input, output, session) {
   ##### Server Code from IManager #####
   ### UI Elements
   # Treatment Type Selection
+  # output$treatment_type <- renderUI({
+  #   
+  #   # Selection Input
+  #   selectInput("treatment_type",
+  #               labelMandatory("Treatment"),
+  #               c("",
+  #                 "Leading Pedestrian Interval",
+  #                 "Speed Feedback Sign", "Paddle Sign",
+  #                 "Pedestrian-Activated Flashing Beacon",
+  #                 "Pedestrian Refuge Island",
+  #                 "High-Visibility Crosswalk",
+  #                 "Scramble Crosswalk"))
+  # })
+  
   output$treatment_type <- renderUI({
     
     # Selection Input
     selectInput("treatment_type",
                 labelMandatory("Treatment"),
-                c("",
-                  "Leading Pedestrian Interval",
-                  "Speed Feedback Sign", "Paddle Sign",
-                  "Pedestrian-Activated Flashing Beacon",
-                  "Pedestrian Refuge Island",
-                  "High-Visibility Crosswalk",
-                  "Scramble Crosswalk"))
+                c(infrastructure_vars))
   })
+  
+  
   
   # Intersection Selection
   output$int_select <- renderUI({
@@ -210,27 +258,41 @@ function(input, output, session) {
                    multiple = FALSE)
   })
   
+  # Planned Status Selection
+  output$treatment_status <- renderUI({
+    if(!is.null(input$treatment_type)){
+      if(input$treatment_type == 'rfg'){
+        selectInput("rfg_status", label = "Status", choices = list('Planned', 'Completed'))
+      } else if(input$treatment_type == 'sfs'){
+        selectInput("sfs_status", label = "Status", choices = list('Planned', 'Completed'))
+      } else if(input$treatment_type == 'fb'){
+        selectInput("fb_status", label = "Status", choices = list('Planned', 'Completed'))
+      }
+    }
+    
+  })
+  
   
   # Second UI Bin
   output$treatment_info1 <- renderUI({
     if(!is.null(input$treatment_type)){
       if(input$treatment_type == 'Leading Pedestrian Interval'){
         sliderInput("r_num_years", "Number of years using R", 0, 25, 2, ticks = FALSE)
-      } else if(input$treatment_type == 'Pedestrian Refuge Island'){
+      } else if(input$treatment_type == 'rfg'){
         tagList(
           selectInput("rfg_hsip", label = "HSIP Survey", choices = list("","Yes", "No")),
           dateInput("rfg_designstart", label = "Design Start Date", value = ""),
           dateInput("rfg_designfinish", label = "Design Completion Date (Plan Sent to BSS)", value = ""),
           dateInput("rfg_constructdate", label = "Construction Completion Date", value = "")
         )
-      } else if (input$treatment_type == 'Pedestrian-Activated Flashing Beacon'){
+      } else if (input$treatment_type == 'fb'){
         tagList(
           selectInput("fb_roadside", label = "Roadside-Only RRFB Candidate", choices = c('','No','Yes','Yes + Mast Arm','Yes + Mast Arm or Median')),
           selectInput("fb_beaconstatus", label = "Beacon Status", choices = c('','Field Assessment Completed', 'RRFB Activated','RRFB Activated - Mast Arm still needed')),
           textInput("fb_flashdur", label = "Flash Duration"),
           selectInput("fb_xwalk", label = "Existing or Proposed Crosswalk", choices = c('','Existing','Proposed'))
         )
-      } else if (input$treatment_type == 'Speed Feedback Sign'){
+      } else if (input$treatment_type == 'sfs'){
         tagList(
           numericInput("sfs_distance", label = "Distance from Intersection (ft)", value=0),
           selectInput("sfs_streetside", label = "Side of Street", choices = c('','N','S','E','W')),
@@ -245,18 +307,18 @@ function(input, output, session) {
     if(!is.null(input$treatment_type)){
       if(input$treatment_type == 'Leading Pedestrian Interval'){
         sliderInput("r_num_years", "Number of years using R", 0, 25, 2, ticks = FALSE)
-      } else if(input$treatment_type == 'Pedestrian Refuge Island'){
+      } else if(input$treatment_type == 'rfg'){
         tagList(
           dateInput("rfg_url", label = "URL to Design Plan", value = ""),
           textAreaInput("rfg_notes", "Notes")
         ) 
-      } else if(input$treatment_type == 'Pedestrian-Activated Flashing Beacon'){
+      } else if(input$treatment_type == 'fb'){
         tagList(
           selectInput("fb_tcr", label = "TCR", choices = c('','No',"Yes")),
           selectInput("fb_curb", label = "Curb Ramps Both Approaches", choices = c('','TBD','Yes')),
-          textAreaInput("fb_polenotes", label = "Poles")
+          textAreaInput("fb_notes", label = "Poles")
         )
-      } else if(input$treatment_type == 'Speed Feedback Sign'){
+      } else if(input$treatment_type == 'sfs'){
         tagList(
           textInput("sfs_serial","Serial No."),
           selectInput('sfs_solar', 'Solar?', choices = c('','Yes','No')),
@@ -269,6 +331,10 @@ function(input, output, session) {
   
   # Message Object
   output$message <- renderText({rv_msg$msg})
+  
+  # DT
+  output$sfs <- renderDT(rv_dbtbl$sfs,
+                         colnames = c('Intersection', 'Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date', 'Solar?', 'Notes' ))
   
   ### Observer focused on the input form
   observe({
@@ -284,23 +350,22 @@ function(input, output, session) {
   })
   
   ### Reactive Objects
-  #RV for location objects
+  # RV for location objects
   rv_location <- reactiveValues(Intersection=list(),
                                 Segment=list())
-  #RV storing UI message variable
+  # RV storing UI message variable
   rv_msg <- reactiveValues()
+  
+  # RV storing data for each table
+  rv_dbtbl <- reactiveValues(sfs = sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_solar, sfs_notes FROM public.geom_sfs', type = 'table'))
+  # rv_dbtbl <- reactive({
+  #   sfs = sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_notes FROM public.geom_sfs', type = 'table')
+  #   })
   
   # Capture form input values
   input_data <- reactive({
-    if(input$treatment_type %in% c('Speed Feedback Sign', 'Pedestrian-Activated Flashing Beacon', 'Pedestrian Refuge Island')){
-      fields <- switch(input$treatment_type,
-                       'Speed Feedback Sign' = c('sfs_distance','sfs_streetside','sfs_facestraffic','sfs_serial','sfs_solar','sfs_activationdate','sfs_notes'),
-                       'Pedestrian-Activated Flashing Beacon' = c('fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_polenotes'),
-                       'Pedestrian Refuge Island' = c('rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'))
-      # Grab values from input
-      formData <- sapply(fields, function(x) input[[x]])
-      return(formData)
-    } else {return(NULL)}
+    fields <- get(input$treatment_type)[['data_flds']]
+    formData <- sapply(fields, function(x) input[[x]])
   })
   
   # Reactive expression to grab intersection data based on user selection
@@ -403,7 +468,7 @@ function(input, output, session) {
           opacity = 1
         )
       # Once user has selected the street segment, becomes NULL
-      rv_msg$msg <- c('.')
+      rv_msg$msg <- c(' ')
     }
     
   })
@@ -430,10 +495,10 @@ function(input, output, session) {
               geom_4326 = st_as_text(rv_location$Intersection$geom))
     
     # Add to DB, update progress bar
-    addData(table = 'public.geom_sfs', data)
+    sqlInsert(table = paste0('public.geom_',input$treatment_type), data)
     # Update linked spreadsheet, update progress bar
     progress$set(detail = "Updating linked Google Sheets.")
-    gsUpdate(table = 'public.geom_sfs')
+    gsUpdate(input$treatment_type, data)
     # Reset form & map objects, map view back to LA
     shinyjs::reset("form")
     rv_location$Segment <- NULL
@@ -442,9 +507,21 @@ function(input, output, session) {
       clearShapes() %>%
       setView(lng = -118.329327,
               lat = 34.0546143,
-              zoom = 11) 
+              zoom = 11)
+    # Update DT
+    rv_dbtbl$sfs <- sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_solar, sfs_notes FROM public.geom_sfs', type = 'table')
     
   })
+  
+  #### Download data
+  output$downloadData <- downloadHandler(
+    filename = function() {
+      paste("data-", Sys.Date(), ".csv", sep="")
+    },
+    content = function(file) {
+      write.csv(rv_dbtbl$sfs, file)
+    }
+  )
   ##### End Server Code from IManager #####
   
   

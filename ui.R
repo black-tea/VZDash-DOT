@@ -71,8 +71,11 @@ body <- dashboardBody(
                   width = 12,
                   leafletOutput("projectmap", height = 700)
                   #"boxcontent"
-                  )
-            )
+                  ),
+              # Box with download information
+              box(width = 6,
+                  title = "Download Treatment Data",
+                  downloadButton('downloadData', 'Download')))
     ),
 
     # Area Filter Content
@@ -84,14 +87,12 @@ body <- dashboardBody(
                      
                      # Map Viewer
                      box(width = NULL, solidHeader = TRUE,
-                         leafletOutput("vzmap", height = 500)
-                     ),
+                         leafletOutput("vzmap", height = 500)),
                      
                      tabBox(
                        width = NULL,
                        tabPanel("Collisions",tableOutput('lapd_summary')),
-                       tabPanel("Improvements", tableOutput('infrastructure_summary'))
-                     )
+                       tabPanel("Improvements", tableOutput('infrastructure_summary')))
                      
                      # Output crash table
                      # box(width = NULL,
@@ -132,47 +133,49 @@ body <- dashboardBody(
     
     # Add Infrastructure Page
     tabItem(tabName = "AddI",
-            fluidPage(
-              shinyjs::useShinyjs(),
-              shinyjs::inlineCSS(appCSS),
-              titlePanel("New Treatment"),
-
-              div(
-                id = "form",
-                fluidRow(
-
-                  # First UI Bin
-                  column(4,
-                         uiOutput("treatment_type"),
-                         uiOutput("int_select"),
-                         conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
-                                          selectInput("TreatmentStatus", label = "Status", choices = list('Planned', 'Completed')))
+            box(width = 12,
+              fluidPage(
+                # Enable javascript
+                shinyjs::useShinyjs(),
+                shinyjs::inlineCSS(appCSS),
+  
+                div(
+                  id = "form",
+                  fluidRow(
+  
+                    # First UI Bin
+                    column(4,
+                           uiOutput("treatment_type"),
+                           uiOutput("int_select"),
+                           conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
+                                            selectInput("TreatmentStatus", label = "Status", choices = list('Planned', 'Completed')))),
+  
+                    # Second UI Bin
+                    column(4,
+                           uiOutput("treatment_info1")),
+  
+                    # Third UI Bin
+                    column(4,
+                           uiOutput("treatment_info2"),
+                           conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
+                                            actionButton("submit", "Submit", class = "btn-primary")))
                   ),
-
-                  # Second UI Bin
-                  column(4,
-                         uiOutput("treatment_info1")
-                  ),
-
-                  # Third UI Bin
-                  column(4,
-                         uiOutput("treatment_info2"),
-                         conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
-                                          actionButton("submit", "Submit", class = "btn-primary"))
-                  )
-                ),
-
-                hr(),
-                h6(uiOutput("message"), align="center"),
-                hr(),
-
-                # Map Output
-                leafletOutput("map")
-
+                  #hr(),
+                  h6(uiOutput("message"), align="center"),
+                  hr(),
+  
+                  # Map Output
+                  leafletOutput("map")
+                )
+            
               )
-
             )
-            )
+            ),
+    # Add Infrastructure Page
+    tabItem(tabName = "ManageI",
+            tabBox(
+              width = 12,
+              tabPanel("SFS",DTOutput('sfs'))))
   )
 )
 
