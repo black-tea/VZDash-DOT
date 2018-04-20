@@ -174,7 +174,9 @@ body <- dashboardBody(
     tabItem(tabName = "ManageI",
             tabBox(
               width = 12,
-              tabPanel("SFS",DTOutput('sfs'))))
+              tabPanel("SFS",DTOutput('sfs')),
+              tabPanel("FB",DTOutput('fb')),
+              tabPanel("RFG",DTOutput('rfg'))))
   )
 )
 

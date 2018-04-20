@@ -39,7 +39,7 @@ sqlQuery <- function (query, type) {
   # close db connection after function call exits
   on.exit(dbDisconnect(conn))
   
-  # get result
+  # Change query type depending on whether we want geometry or not
   if(type == 'table'){
     result <- dbGetQuery(conn, query)
   } else if(type == 'spatial'){
@@ -50,57 +50,61 @@ sqlQuery <- function (query, type) {
   return(result)
 }
 
-sqlQueryTblData <- function (table, data) {
+sqlQueryTblData <- function (table, flds) {
   
   # Connect to the database 
   conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
   
+  # close db connection after function call exits
+  on.exit(dbDisconnect(conn))
+  
   # Construct the query
   query <- sprintf(
-    "SELECT %s FROM %s",
-    paste(names(data), collapse = ", "),
+    "SELECT %s FROM public.geom_%s",
+    paste(flds, collapse = ", "),
     table
   )
-  print(query)
   
   # Submit the query and disconnect
-  dbGetQuery(conn, query)
-  on.exit(dbDisconnect(conn))
+  result <- dbGetQuery(conn, query)
+  
+  return(result)
 }
+
 # Insert row into PostGIS table
 sqlInsert <- function(table, data) {
+  
   # Connect to the database
   conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+  
+  # close db connection after function call exits
+  on.exit(dbDisconnect(conn))
+  
   # Construct the update query by looping over the data fields
   query <- sprintf(
-    "INSERT INTO %s (%s) VALUES ('%s')",
+    "INSERT INTO public.geom_%s (%s) VALUES ('%s')",
     table, 
     paste(names(data), collapse = ", "),
     paste(data, collapse = "', '")
   )
-  # Submit the update query and disconnect
+  
+  # Submit the insert query
   dbGetQuery(conn, query)
-  on.exit(dbDisconnect(conn))
+  
 }
-# 
-# loadData <- function(table) {
-#   # Connect to the database
-#   db <- dbConnect(SQLite(), sqlitePath)
-#   # Construct the fetching query
-#   query <- sprintf("SELECT * FROM %s", table)
-#   # Submit the fetch query and disconnect
-#   data <- dbGetQuery(db, query)
-#   dbDisconnect(db)
-#   data
-# }
 
 # Function to update google sheets after making any changes to the DB
-gsUpdate <- function(table, data) {
+gsUpdate <- function(table, flds) {
+  
   # Register test google sheet that already exists
   test_s <- gs_key('1bgkKWcvrMJXP3XOUAi_8-Z4K7k3msUYdS-yCZd_qP50')
-  # Edit the google sheet
+  
+  # Query the db for updated table information
+  result <- sqlQueryTblData(table, flds)
+  
+  # Update google sheet with result
   test_s <- test_s %>%
-    gs_edit_cells(ws = 'sfs', input = sqlQueryTblData(table = paste0('public.geom_',table), data))
+    gs_edit_cells(ws = table, input = result)
 }
 
 # Function to create Icons for map
@@ -113,6 +117,7 @@ createIcon <- function(color) {
     # The markercolor is from a fixed set of color choices
     markerColor = color
   )
+  
   return(custom_icon)
 }
 
@@ -141,14 +146,24 @@ infrastructure_vars <- c(
 sfs <- list(id = 'sfs',
             name_lbl = 'Speed Feedback Sign',
             data_flds = c('sfs_status','sfs_distance','sfs_streetside','sfs_facestraffic','sfs_serial','sfs_solar','sfs_activationdate','sfs_notes'),
-            data_names = c('Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date','Solar?', 'Notes')
+            data_names = c('Status','Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date','Solar?', 'Notes'),
+            tbl_flds = c('int_name','sfs_status','sfs_distance','sfs_streetside','sfs_facestraffic','sfs_serial','sfs_solar','sfs_activationdate','sfs_notes'),
+            tbl_names = c('Intersection','Status','Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date', 'Solar?', 'Notes' )
             )
 fb <- list(id = 'fb',
            name_lbl = 'Pedestrian-Activated Flashing Beacon',
-           data_flds = c('fb_status','fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_notes'))
+           data_flds = c('fb_status','fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_notes'),
+           data_names = c('Status','Roadside Only','Beacon Status','Flash Duration','X-Walk','TCR','Curb Ramps Both Approaches','Pole Notes'),
+           tbl_flds = c('int_name','fb_status','fb_roadside','fb_beaconstatus','fb_flashdur','fb_xwalk','fb_tcr','fb_curb','fb_notes'),
+           tbl_names = c('Intersection','Status','Roadside Only','Beacon Status','Flash Duration','X-Walk','TCR','Curb Ramps Both Approaches','Pole Notes')
+           )
 rfg <- list(id = 'rfg',
             name_lbl = 'Pedestrian Refuge Island',
-            data_flds = c('rfg_status','rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'))
+            data_flds = c('rfg_status','rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'),
+            data_names = c('Status','HSIP Survey','Design Start Date','Design Completion Date','Construction Completion Date','Design Plan URL','Notes'),
+            tbl_flds = c('int_name','rfg_status','rfg_hsip','rfg_designstart','rfg_designfinish','rfg_constructdate','rfg_url','rfg_notes'),
+            tbl_names = c('Intersection','Status','HSIP Survey','Design Start Date','Design Completion Date','Construction Completion Date','Design Plan URL','Notes')
+            )
 
 ##### End Prep Code from IManager #####
 
@@ -245,8 +260,6 @@ function(input, output, session) {
                 c(infrastructure_vars))
   })
   
-  
-  
   # Intersection Selection
   output$int_select <- renderUI({
     
@@ -269,9 +282,7 @@ function(input, output, session) {
         selectInput(inputId = "fb_status", label = "Status", choices = list('Planned', 'Completed'))
       }
     }
-    
   })
-  
   
   # Second UI Bin
   output$treatment_info1 <- renderUI({
@@ -333,8 +344,9 @@ function(input, output, session) {
   output$message <- renderText({rv_msg$msg})
   
   # DT
-  output$sfs <- renderDT(rv_dbtbl$sfs,
-                         colnames = c('Intersection', 'Dist (ft.)','Street Side', 'Faces Traffic', 'Serial', 'Activation Date', 'Solar?', 'Notes' ))
+  output$sfs <- renderDT(rv_dbtbl$sfs, colnames = sfs$tbl_names)
+  output$rfg <- renderDT(rv_dbtbl$rfg, colnames = rfg$tbl_names)
+  output$fb <- renderDT(rv_dbtbl$fb, colnames = fb$tbl_names)
   
   ### Observer focused on the input form
   observe({
@@ -351,22 +363,26 @@ function(input, output, session) {
   
   ### Reactive Objects
   # RV for location objects
-  rv_location <- reactiveValues(Intersection=list(),
-                                Segment=list())
+  rv_location <- reactiveValues(Intersection=list(), Segment=list())
+  
   # RV storing UI message variable
   rv_msg <- reactiveValues()
   
   # RV storing data for each table
-  rv_dbtbl <- reactiveValues(sfs = sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_solar, sfs_notes FROM public.geom_sfs', type = 'table'))
-  # rv_dbtbl <- reactive({
-  #   sfs = sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_notes FROM public.geom_sfs', type = 'table')
-  #   })
+  rv_dbtbl <- reactiveValues(sfs = sqlQueryTblData('sfs', sfs$tbl_flds),
+                             rfg = sqlQueryTblData('rfg', rfg$tbl_flds),
+                             fb = sqlQueryTblData('fb', fb$tbl_fields)
+                             )
   
   # Capture form input values
   input_data <- reactive({
     fields <- get(input$treatment_type)[['data_flds']]
     formData <- sapply(fields, function(x) input[[x]])
-    print(formData)
+  })
+  
+  # Capture fields for display in tables
+  tbl_fields <- reactive({
+    fields <- get(input$treatment_type)[['tbl_flds']]
   })
   
   # Reactive expression to grab intersection data based on user selection
@@ -404,12 +420,14 @@ function(input, output, session) {
   # Map observer that updates based on the intersection
   observeEvent(input$int, {
     if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      
       # Get intersection reactive var, clear markers, clear RV
       intersection_r <- intersection_r()
       rv_location$Segment <- NULL
       proxy <- leafletProxy("map") %>%
         clearMarkers() %>%
         clearShapes()
+      
       # If there is one marker in the query, it is blue
       if(nrow(intersection_r) == 1 && length(intersection_r) > 0) {
         # Add intersection to RV object
@@ -423,6 +441,7 @@ function(input, output, session) {
           data = intersection_r,
           icon = createIcon('darkblue')
         )
+        
         # If there is at least one related segment, add it
         if(length(xstreet_r) > 0) {
           proxy %>% addPolylines(
@@ -445,8 +464,6 @@ function(input, output, session) {
                           lat1 = as.double(st_bbox(intersection_r)[2]),
                           lng2 = as.double(st_bbox(intersection_r)[3]),
                           lat2 = as.double(st_bbox(intersection_r)[4]))
-      
-      print(rv_location$Segment)
     }
   })
   
@@ -496,10 +513,12 @@ function(input, output, session) {
               geom_4326 = st_as_text(rv_location$Intersection$geom))
     
     # Add to DB, update progress bar
-    sqlInsert(table = paste0('public.geom_',input$treatment_type), data)
+    sqlInsert(input$treatment_type, data)
+    
     # Update linked spreadsheet, update progress bar
     progress$set(detail = "Updating linked Google Sheets.")
-    gsUpdate(input$treatment_type, input_data())
+    gsUpdate(input$treatment_type, tbl_fields())
+    
     # Reset form & map objects, map view back to LA
     shinyjs::reset("form")
     rv_location$Segment <- NULL
@@ -509,8 +528,9 @@ function(input, output, session) {
       setView(lng = -118.329327,
               lat = 34.0546143,
               zoom = 11)
+    
     # Update DT
-    rv_dbtbl$sfs <- sqlQuery(query = 'SELECT int_name, sfs_distance, sfs_streetside, sfs_facestraffic, sfs_serial, sfs_activationdate, sfs_solar, sfs_notes FROM public.geom_sfs', type = 'table')
+    rv_dbtbl[[input$treatment_type]] <- sqlQueryTblData(input$treatment_type, tbl_fields())
     
   })
   
