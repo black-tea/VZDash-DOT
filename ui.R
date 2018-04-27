@@ -45,13 +45,24 @@ body <- dashboardBody(
     
     # Key Indicator Content
     tabItem(tabName = "kpi",
-            fluidRow(
-              valueBoxOutput("DeathsToDate", width = 6),
-              valueBoxOutput("PedDeaths", width = 6)
+            # fluidRow(
+            #   valueBoxOutput("DeathsToDate", width = 6),
+            #   valueBoxOutput("PedDeaths", width = 6)
+            # ),
+            # fluidRow(
+            #   valueBoxOutput("BikeDeaths", width = 6),
+            #   valueBoxOutput("VehDeaths", width = 6)),
+            tabBox(
+              width = 6,
+              title = textOutput("collision_title"),
+              tabPanel("Table",tableOutput("lapd_summary_2yr")),
+              tabPanel("Plot",plotOutput("slopegraph"))#, height = "400px"))
             ),
-            fluidRow(
-              valueBoxOutput("BikeDeaths", width = 6),
-              valueBoxOutput("VehDeaths", width = 6))
+            box(
+              width = 6,
+              title = "Citywide Improvements",
+              tableOutput("citywide_infrastructure_summary")
+            )
             # ),
             # fluidRow(
             #   box(
@@ -91,7 +102,7 @@ body <- dashboardBody(
                      
                      tabBox(
                        width = NULL,
-                       tabPanel("Collisions",tableOutput('lapd_summary')),
+                       tabPanel("Collisions",tableOutput('lapd_summary_current')),
                        tabPanel("Improvements", tableOutput('infrastructure_summary')))
                      
                      # Output crash table

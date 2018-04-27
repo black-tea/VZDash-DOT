@@ -1,6 +1,7 @@
 library(sf)
 library(dplyr)
 library(httr)
+library(RPostgreSQL)
 
 # MO Codes
 ped_inv_codes = '3003'
@@ -20,15 +21,15 @@ response <- GET('https://data.lacity.org/resource/k8cc-2d49.json?$select=count(d
 record_ct <- content(response, 'parsed')[[1]][[1]]
 
 # Step 2: make the request
-#request = paste0('https://data.lacity.org/resource/k8cc-2d49.geojson?$limit=',record_ct)
-#collisions = read_sf(request)
-
-# Step 1&2 (current): Query for collisions since this year, with no limit
-request = paste0('https://data.lacity.org/resource/k8cc-2d49.geojson?$where=date_extract_y(date_occ)=2018&$limit=',record_ct)
+request = paste0('https://data.lacity.org/resource/k8cc-2d49.geojson?$limit=',record_ct)
 collisions = read_sf(request)
 
+# Step 1&2 (current): Query for collisions since this year, with no limit
+#request = paste0('https://data.lacity.org/resource/k8cc-2d49.geojson?$where=date_extract_y(date_occ)=2018&$limit=',record_ct)
+#collisions = read_sf(request)
+
 # Step 3: Clean MO Codes
-collisions <- collisions %>%
+lapd_collisions <- collisions %>%
   # rowwise() makes sure that the mutate operations don't use data from the entire df
   rowwise() %>%
   mutate(severity = case_when(grepl('3027',mocodes) ~ 1,
@@ -36,16 +37,22 @@ collisions <- collisions %>%
                               grepl('3025',mocodes) ~ 3,
                               grepl('3026',mocodes) ~ 4,
                               grepl('3028',mocodes) ~ 0)) %>%
-  mutate(mode = case_when(any(sapply(ped_inv_codes, grepl, mocodes)) ~ 'Ped',
-                          any(sapply(bike_inv_codes, grepl, mocodes)) ~ 'Bike',
-                          any(sapply(mc_inv_codes, grepl, mocodes)) ~ 'MC')) %>%
+  mutate(mode = case_when(any(sapply(ped_inv_codes, grepl, mocodes)) ~ 'Pedestrian',
+                          any(sapply(bike_inv_codes, grepl, mocodes)) ~ 'Bicyclist',
+                          any(sapply(mc_inv_codes, grepl, mocodes)) ~ 'Motorcyclist')) %>%
   mutate(hit_and_run = ifelse(any(sapply(hit_and_run_codes, grepl, mocodes)),'Y',NA)) %>%
   # remove rowwise operation
   ungroup() %>%
   # recast as sf object
   st_sf()
 
-# Export to geojson (future will dump to sqlite + spatailite)
-#write_sf(collisions, 'data/lapd_collisions/collisions.geojson')
-st_write(collisions, 'data/lapd_collisions/collisions.geojson',delete_dsn = TRUE)
+# Export Method 1: Write to GeoJSON file
+#st_write(lapd_collisions, 'data/lapd_collisions/collisions.geojson',delete_dsn = TRUE)
+
+# Export Method 2: Write to PostgreSQL
+# see https://www.rdocumentation.org/packages/sf/versions/0.6-1/topics/st_write
+conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+sf::st_write_db(conn, lapd_collisions, table = 'geom_lapd_collisions', row.names=FALSE, drop=TRUE)
+dbDisconnect(conn)
+
 

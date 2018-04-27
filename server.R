@@ -19,6 +19,7 @@ library(gmodels)
 library(rgdal)
 library(tidyr)
 library(ggplot2)
+library(slopegraph)
 
 ##### Packages from IManager #####
 library(RPostgreSQL)
@@ -209,8 +210,8 @@ infrastructure <- infrastructure %>% mutate(Type = as.factor(Type))
 cd_boundaries$DISTRICT <- c('07','12','06','03','02','05','04','13','14','11','01','10','09','08','15')
 
 ### Other Data Preparation
-lapd_fatal <- lapd_collisions %>% filter(severity == '1')
-lapd_si <- lapd_collisions %>% filter(severity == '2')
+#lapd_fatal <- lapd_collisions %>% filter(severity == '1')
+#lapd_si <- lapd_collisions %>% filter(severity == '2')
 # Prep for Initial Dashboard Calculations
 lapd_collisions$date_occ <- as.Date(lapd_collisions$date_occ)
 collisions_2017$date_occ <- as.Date(collisions_2017$date_occ)
@@ -223,6 +224,34 @@ ytd_bike_fatal_2018 <- lapd_collisions %>% filter(severity == 1, mode == 'Bike')
 ytd_bike_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, mode == 'Bike', date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
 ytd_veh_fatal_2018 <- lapd_collisions %>% filter(severity == 1, is.na(mode)) %>% st_set_geometry(NULL) %>% tally()
 ytd_veh_fatal_2017 <- collisions_2017 %>% mutate(date_occ = format(date_occ, format='%m-%d')) %>% filter(severity == 1, is.na(mode), date_occ < current_date) %>% st_set_geometry(NULL) %>% tally()
+
+# infrastructure_r() %>%
+#   st_set_geometry(NULL) %>%
+#   group_by(Type) %>%
+#   summarise(Count = n()) 
+# collisions_tbl <- lapd_collisions %>%
+#   bind_rows(collisions_2017) %>%
+#   st_set_geometry(NULL) %>%
+#   filter(severity == '1') %>%
+#   group_by(mode) %>%
+#   summarise(Count = n())
+
+# Collisions
+lapd_collisions_2 <- lapd_collisions %>% mutate(year = 2018) %>% st_set_geometry(NULL)
+collisions_2017_2 <- collisions_2017 %>% mutate(year = 2017) %>% st_set_geometry(NULL)
+
+# Collisions
+collisions_tbl <- lapd_collisions_2 %>%
+  bind_rows(collisions_2017_2) %>%
+  replace_na(list(mode = 'Veh')) %>%
+  filter(severity == '1') %>%
+  group_by(mode, year) %>%
+  tally() %>%
+  spread(year, n) %>%
+  ungroup %>%
+  as.data.frame() %>%
+  remove_rownames %>%
+  column_to_rownames(var = 'mode')
 
 # Fatals by Month
 # MonthlyFatals <- lapd_collisions %>%
@@ -367,6 +396,32 @@ function(input, output, session) {
   
   # RV storing UI message variable
   rv_msg <- reactiveValues()
+  
+  # RV storing fatal collision data
+  rv_collisions <- reactiveValues(fatal_5yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+                                                        FROM public.geom_lapd_collisions
+                                                        WHERE
+                                                          severity = '1' AND
+                                                          date_occ >= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '5' year",'spatial'),
+                                  fatal_ytd = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+                                                        FROM public.geom_lapd_collisions
+                                                        WHERE
+                                                          severity = '1' AND
+                                                          (date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions))",'spatial'),
+                                  fatal_ytd_2yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+                                                            FROM public.geom_lapd_collisions
+                                                            WHERE severity = '1' AND 
+                                                              ((date_occ >= to_char(date_trunc('year', now() - interval '1 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '1 year') OR
+                                                              (date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions)))",'spatial'),
+                                  fatal_ytd_5yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry FROM public.geom_lapd_collisions
+                                                            WHERE severity = '1' AND 
+                                                              ((date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions)) OR
+                                                              (date_occ >= to_char(date_trunc('year', now() - interval '1 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '1 year') OR
+                                                              (date_occ >= to_char(date_trunc('year', now() - interval '2 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '2 year') OR
+                                                              (date_occ >= to_char(date_trunc('year', now() - interval '3 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '3 year') OR
+                                                              (date_occ >= to_char(date_trunc('year', now() - interval '4 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '4 year'))",'spatial'),
+                                  curr_date = sqlQuery("Select MAX(date_occ) from public.geom_lapd_collisions",'table')
+                                  )
   
   # RV storing data for each table
   rv_dbtbl <- reactiveValues(sfs = sqlQueryTblData('sfs', sfs$tbl_flds),
@@ -611,6 +666,17 @@ function(input, output, session) {
       ggtitle("Monthly Tracking")
   })
   
+  # Citywide infrastructure output table
+  output$citywide_infrastructure_summary <- renderTable({
+    
+    infrastructure %>%
+      st_set_geometry(NULL) %>%
+      count(Type) %>%
+      bind_rows(cbind(Type = 'Total Improvements Installed', n = count(infrastructure %>% st_set_geometry(NULL)))) %>%
+      mutate(Count = n,
+             n = NULL)
+  })
+  
   ##### Geography Type select input box
   output$geography_typeSelect <- renderUI({
     
@@ -671,16 +737,29 @@ function(input, output, session) {
     }
   })
   
+  # # Filter lapd collisions, if needed
+  # ytd_fatal_collisions_r <- reactive({
+  #   # Filter if AreaFilter tab is activated
+  #   if((input$tabs == 'AreaFilter')&(!is.null(input$geography_name))){
+  #     # Geography Filter
+  #     lapd_collisions <- lapd_collisions[geography(),]
+  #     # Date Range Filter
+  #     lapd_collisions %>% filter(date_occ >= input$dateRange[1] & date_occ <= input$dateRange[2])
+  #   } else {
+  #     return(lapd_collisions)
+  #   }
+  # })
+  
   # Filter lapd collisions, if needed
-  lapd_collisions_r <- reactive({
+  ytd_fatal_collisions_r <- reactive({
     # Filter if AreaFilter tab is activated
     if((input$tabs == 'AreaFilter')&(!is.null(input$geography_name))){
       # Geography Filter
-      lapd_collisions <- lapd_collisions[geography(),]
+      lapd_collisions <- rv_collisions$fatal_ytd[geography(),]
       # Date Range Filter
       lapd_collisions %>% filter(date_occ >= input$dateRange[1] & date_occ <= input$dateRange[2])
     } else {
-      return(lapd_collisions)
+      return(rv_collisions$fatal_ytd)
     }
   })  
   
@@ -708,7 +787,7 @@ function(input, output, session) {
   # Map Object for Project Delivery Tab
   output$projectmap <- renderLeaflet({
     
-    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
+    lapd_fatal <- ytd_fatal_collisions_r() %>% filter(severity == '1')
     
     # Define color palette
     lbls = c( 'Fatal Collision','High-Injury Network','High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Priority Corridor','Scramble Crosswalk')
@@ -842,7 +921,7 @@ function(input, output, session) {
   # Map Object for Area Filter
   output$vzmap <- renderLeaflet({
     
-    lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
+    lapd_fatal <- ytd_fatal_collisions_r() %>% filter(severity == '1')
     geography_r <- geography()
     infrastructure_r <- infrastructure_r()
     
@@ -960,8 +1039,8 @@ function(input, output, session) {
   
   
     # # Get reactive value of lapd_collisions
-    # lapd_fatal <- lapd_collisions_r() %>% filter(severity == '1')
-    # lapd_si <- lapd_collisions_r() %>% filter(severity == '2')
+    # lapd_fatal <- ytd_fatal_collisions_r() %>% filter(severity == '1')
+    # lapd_si <- ytd_fatal_collisions_r() %>% filter(severity == '2')
     #   
     #   
     #   
@@ -1000,21 +1079,58 @@ function(input, output, session) {
     # }
     
   
-  output$lapd_summary <- renderTable({
+  output$lapd_summary_current <- renderTable({
 
-    lapd_collisions_r() %>%
+    ytd_fatal_collisions_r() %>%
       group_by(mode, severity) %>%
       tally() %>%
       st_set_geometry(NULL) %>%
       spread(severity, n)
   })
   
+  output$lapd_summary_2yr <- renderTable({
+    
+    rv_collisions$fatal_ytd_2yr %>%
+      mutate(year = lubridate::year(date_occ)) %>%
+      group_by(mode, year) %>%
+      tally() %>%
+      st_set_geometry(NULL) %>%
+      spread(year, n)
+  })
+  
+  output$collision_title <- renderText({
+    paste0('YTD Fatals, ',format(rv_collisions$curr_date, format='%m-%d'))
+  })
+  
   output$infrastructure_summary <- renderTable({
     
     infrastructure_r() %>%
       st_set_geometry(NULL) %>%
-      group_by(Type) %>%
-      summarise(Count = n()) 
+      count(Type) %>%
+      bind_rows(cbind(Type = 'Total Improvements Installed', n = count(infrastructure_r() %>% st_set_geometry(NULL)))) %>%
+      mutate(Count = n,
+             n = NULL)
+  })
+  
+  # Slopegraph with YTD Numbers
+  output$slopegraph <- renderPlot({
+    
+    slopetbl <- rv_collisions$fatal_ytd_5yr %>%
+      replace_na(list(mode = 'MV Occupant')) %>%
+      mutate(year = lubridate::year(date_occ)) %>%
+      group_by(mode, year) %>%
+      tally() %>%
+      spread(year, n) %>%
+      ungroup() %>%
+      as.data.frame() %>%
+      remove_rownames %>%
+      column_to_rownames(var = 'mode')
+    
+    slopegraph(slopetbl, col.lines = 'gray', col.lab = "black", 
+               #xlim = c(-.5,5.5), 
+               #cex.lab = 0.5, cex.num = 0.5, 
+               family = 'Helvitca',
+               xlabels = c('2014','2015','2016','2017','2018'))
   })
   
   
