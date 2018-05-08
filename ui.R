@@ -45,34 +45,20 @@ body <- dashboardBody(
     
     # Key Indicator Content
     tabItem(tabName = "kpi",
-            # fluidRow(
-            #   valueBoxOutput("DeathsToDate", width = 6),
-            #   valueBoxOutput("PedDeaths", width = 6)
-            # ),
-            # fluidRow(
-            #   valueBoxOutput("BikeDeaths", width = 6),
-            #   valueBoxOutput("VehDeaths", width = 6)),
+
             tabBox(
               width = 6,
               title = textOutput("collision_title"),
-              tabPanel("Table",tableOutput("lapd_summary_2yr")),
-              tabPanel("Plot",plotOutput("slopegraph"))#, height = "400px"))
+              tabPanel("Table",tableOutput("fatalSummaryKPI")),
+              tabPanel("Plot",plotOutput("slopegraph"))
             ),
+            
             box(
               width = 6,
               title = "Citywide Improvements",
               tableOutput("citywide_infrastructure_summary")
             )
-            # ),
-            # fluidRow(
-            #   box(
-            #     #title = "Monthly Fatals"
-            #     #,status = "primary"
-            #     #,solidHeader = TRUE
-            #     #,collapsible = TRUE,
-            #     plotOutput("MonthlyFatalChart", height = "400px")
-            #   )
-            # )
+
     ),
 
     # Key Indicator Content
@@ -80,14 +66,14 @@ body <- dashboardBody(
             fluidRow(
               box(#status = "warning",
                   width = 12,
-                  leafletOutput("projectmap", height = 700)
+                  leafletOutput("projectmap", height = 700))
                   #"boxcontent"
-                  ),
-              # Box with download information
-              box(width = 6,
-                  title = "Download Treatment Data",
-                  downloadButton('downloadData', 'Download')))
-    ),
+                  # ),
+    #           # Box with download information
+    #           box(width = 6,
+    #               title = "Download Treatment Data",
+    #               downloadButton('downloadData', 'Download')))
+    )),
 
     # Area Filter Content
     tabItem(tabName = "AreaFilter",
@@ -102,7 +88,7 @@ body <- dashboardBody(
                      
                      tabBox(
                        width = NULL,
-                       tabPanel("Collisions",tableOutput('lapd_summary_current')),
+                       tabPanel("YTD Fatalities",tableOutput('fatalSummaryFilter')),
                        tabPanel("Improvements", tableOutput('infrastructure_summary')))
                      
                      # Output crash table
