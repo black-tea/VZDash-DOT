@@ -56,7 +56,7 @@ body <- dashboardBody(
             box(
               width = 6,
               title = "Citywide Improvements",
-              tableOutput("citywide_infrastructure_summary")
+              tableOutput("citywideInfrastructureSummary")
             )
 
     ),
@@ -84,12 +84,12 @@ body <- dashboardBody(
                      
                      # Map Viewer
                      box(width = NULL, solidHeader = TRUE,
-                         leafletOutput("vzmap", height = 500)),
+                         leafletOutput("filterMap", height = 500)),
                      
                      tabBox(
                        width = NULL,
                        tabPanel("YTD Fatalities",tableOutput('fatalSummaryFilter')),
-                       tabPanel("Improvements", tableOutput('infrastructure_summary')))
+                       tabPanel("Improvements", tableOutput('infrastructureSummary')))
                      
                      # Output crash table
                      # box(width = NULL,
@@ -107,18 +107,18 @@ body <- dashboardBody(
               column(width = 3, wellPanel(
                 
                 # Select Geography Type
-                uiOutput("geography_typeSelect"),
+                uiOutput("geographyTypeSelect"),
                 
                 # Select Geography Name
-                uiOutput("geography_nameSelect"),
+                uiOutput("geographyNameSelect")#,
                 
-                # Date Range Filter
-                dateRangeInput(inputId = 'dateRange',
-                               label = 'Date Range',
-                               start = '2017-01-01',
-                               end = Sys.Date(),
-                               separator = ' - ',
-                               format = "mm/dd/yy")
+              #   # Date Range Filter
+              #   dateRangeInput(inputId = 'dateRange',
+              #                  label = 'Date Range',
+              #                  start = '2017-01-01',
+              #                  end = Sys.Date(),
+              #                  separator = ' - ',
+              #                  format = "mm/dd/yy")
               )#,
               
               # Generate a Report
@@ -143,7 +143,7 @@ body <- dashboardBody(
                     # First UI Bin
                     column(4,
                            uiOutput("treatment_type"),
-                           uiOutput("int_select"),
+                           uiOutput("intSelect"),
                            uiOutput("treatment_status")),
   
                     # Second UI Bin
@@ -161,7 +161,7 @@ body <- dashboardBody(
                   hr(),
   
                   # Map Output
-                  leafletOutput("map")
+                  leafletOutput("infrastructureManagerMap")
                 )
             
               )
