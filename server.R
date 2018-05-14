@@ -25,7 +25,6 @@ library(tibble)
 library(RPostgreSQL)
 library(shiny)
 library(shinyjs)
-library(sf) # Don't use 'sf' column for queries that don't have 'geom' column
 library("googlesheets")
 ##### End Packages from IManager #####
 
@@ -210,7 +209,7 @@ function(input, output, session) {
   
   ##### Reactive Objects #####
   # RV for intersection list
-  intRV <- reactiveValues(intlist = sqlQuery("SELECT assetid, cl_node_id, tooltip FROM intersections",type = 'table'))
+  intRV <- reactiveValues(intlist = sqlQuery("SELECT tooltip FROM intersections",type = 'table'))
   
   # RV for location objects
   locationRV <- reactiveValues(Intersection=list(), Segment=list())
@@ -542,10 +541,10 @@ function(input, output, session) {
   })
   
   # Infrastructure Manager Map Observer based on the polyline selection
-  observeEvent(input$map_shape_click, {
+  observeEvent(input$infrastructureManagerMap_shape_click, {
     if(!is.null(xstreetR())){
       # Grab ID of the shape that was clicked
-      clickID <- input$map_shape_click$id
+      clickID <- input$infrastructureManagerMap_shape_click$id
       # Filter polylines based on the click
       polylineSelected <- xstreetR() %>%
         filter(rownames(.) == clickID )
@@ -561,7 +560,7 @@ function(input, output, session) {
         )
       # Once user has selected the street segment, becomes NULL
       msgRV$msg <- c(' ')
-    }
+    } 
     
   })
   
@@ -617,171 +616,13 @@ function(input, output, session) {
               lat = 34.0546143,
               zoom = 12) 
     
-    # ytdFatalR <- ytdFatalR() %>% filter(severity == '1')
-    # 
-    # # Define color palette
-    # lbls = c( 'Fatal Collision','High-Injury Network','High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Priority Corridor','Scramble Crosswalk')
-    # pal <- colorFactor(
-    #   palette = c('#f44242','#f44242','#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#0E016F','#96C0E6'),
-    #   domain = lbls
-    #   )
-    # 
-    # # Create map
-    # map <- leaflet() %>%
-    #   addProviderTiles(providers$CartoDB.Positron) %>%
-    #   setView(lng = -118.329327,
-    #           lat = 34.0546143,
-    #           zoom = 12) %>%
-    #   # Add City Boundary
-    #   addPolylines(
-    #     color = '#C0C0C0',
-    #     weight = 2,
-    #     opacity = 1,
-    #     data = city_boundary) %>%
-    #   # Add HIN
-    #   addPolylines(
-    #     color = ~pal('High-Injury Network'),
-    #     weight = 2,
-    #     opacity = 1,
-    #     data = hinR(),
-    #     group = 'VZ Streets',
-    #     label = ~paste0(STNAME, ": ", FROM_, " to ", TO_)) %>%
-    #   # Add PC
-    #   addPolylines(
-    #     color = ~pal('Priority Corridor'),
-    #     weight = 2,
-    #     opacity = 1,
-    #     data = pcR(),
-    #     group = 'VZ Streets') %>%
-    #   # Add Infrastructure
-    #   addCircleMarkers(
-    #     data = infrastructureR(),
-    #     radius = 2.5,
-    #     color = ~pal(Type),
-    #     stroke = FALSE,
-    #     fillOpacity = 1,
-    #     group = 'Projects - Complete') %>%
-    #   addLegend(
-    #     position = "bottomleft",
-    #     pal = pal,
-    #     values = lbls
-    #   ) %>%
-    #   addLayersControl(
-    #     overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete'),
-    #     options = layersControlOptions(collapsed = TRUE)
-    #   )
-    # 
-    # # From LAPD Data, If there is at least 1 fatal, add to map
-    # if(nrow(ytdFatalR) > 0){
-    #   map <- addCircleMarkers(
-    #     map,
-    #     radius = 1,
-    #     fill = TRUE,
-    #     color = ~pal('Fatal Collision'),
-    #     fillColor = ~pal('Fatal Collision'),
-    #     opacity = 1,
-    #     data = ytdFatalR,
-    #     group = 'Collisions YTD',
-    #     popup = ~paste0('DR#: ',dr_no, '<br>',
-    #                     'Date: ', date_occ, '<br>',
-    #                     'Time: ', time_occ, '<br>',
-    #                     'Involved with: ', mode, '<br>')
-    #   )
-    # }
-    # 
-    # map
   })
   
   # Map Object for Area Filter
   output$filterMap <- renderLeaflet({
-    
+
     mapR()
-    
-    # ytdFatalR <- ytdFatalR() %>% filter(severity == '1')
-    # geographyR <- geographyR()
-    # infrastructureR <- infrastructureR()
-    # 
-    # 
-    # # Define color palette
-    # colors = c('#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#96C0E6')
-    # names(colors) = c( 'High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Scramble Crosswalk')
-    # pal <- colorFactor(
-    #   domain = levels(factor(infrastructureR$Type)),
-    #   palette = colors[levels(factor(infrastructureR$Type))]
-    # )
-    # 
-    # map <- leaflet() %>%
-    #   addProviderTiles(providers$CartoDB.Positron)
-    # 
-    # if (!is.null(input$geographyName)) {
-    #   map <- map %>%
-    #     addPolygons(
-    #       data = geographyR,
-    #       weight = 5,
-    #       opacity = 0.3,
-    #       color = 'grey',
-    #       fill = FALSE) %>%
-    #     # Add filtered HIN
-    #     addPolylines(
-    #       color = '#f44242',
-    #       weight = 3,
-    #       opacity = 1,
-    #       data = hinR(),
-    #       label = ~paste0(STNAME, ": ", FROM_, " to ", TO_),
-    #       group = 'VZ Streets') %>%
-    #     # Add filtered PC
-    #     addPolylines(
-    #       color = '#0E016F',
-    #       weight = 3,
-    #       opacity = 1,
-    #       data = pcR(),
-    #       group = 'VZ Streets')
-    # }
-    # 
-    # # From LAPD Data, If there is at least 1 fatal, add to map
-    # if(nrow(ytdFatalR) > 0){
-    #   map <- addCircleMarkers(
-    #     map,
-    #     radius = 1,
-    #     fill = TRUE,
-    #     color = '#f44242',
-    #     fillColor = '#f44242',
-    #     opacity = 1,
-    #     data = ytdFatalR,
-    #     group = 'Collisions YTD',
-    #     popup = ~paste0('DR#: ',dr_no, '<br>',
-    #                     'Date: ', date_occ, '<br>',
-    #                     'Time: ', time_occ, '<br>',
-    #                     'Involved with: ', mode, '<br>')
-    #   )
-    # }
-    # 
-    # # If there is at least one piece of infrastructure, add to map
-    # if(nrow(infrastructureR) > 0){
-    #   map <- map %>%
-    #     addCircleMarkers(
-    #       radius = 1,
-    #       fill = TRUE,
-    #       data = infrastructureR(),
-    #       #data = infrastructureR,
-    #       color = ~pal(Type),
-    #       #color = ~pal(infrastructureR$Type),
-    #       fillColor = ~pal(Type),
-    #       #fillColor = ~pal(infrastructureR$Type),
-    #       opacity = 1,
-    #       group = 'Projects - Complete') %>%
-    #     addLegend(
-    #       position = "bottomleft",
-    #       pal = pal,
-    #       values = levels(factor(infrastructureR$Type))) %>%
-    #       #values = levels(factor(Type))) %>%
-    #     addLayersControl(
-    #       overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete'),
-    #       options = layersControlOptions(collapsed = TRUE)
-    #     )
-    # }
-    #     
-    # map
+
   })
     
   ##### Non-Map Output #####
@@ -793,56 +634,6 @@ function(input, output, session) {
       write.csv(dbtblRV$sfs, file)
     }
   )
-  
-  # # KPIs
-  # output$DeathsToDate <- renderValueBox({
-  #   valueBox(
-  #     paste0(toString(ytd_fatal_2018),' Fatalities YTD (',toString(current_date),')'),
-  #     paste0(toString(ytd_fatal_2017),
-  #            ' YTD 2017 (',
-  #            toString(round(((ytd_fatal_2018 - ytd_fatal_2017)/ytd_fatal_2017)*100),digits=2),
-  #            '%)'),
-  #     color = "black")  
-  # })
-  # output$PedDeaths <- renderValueBox({
-  #   valueBox(
-  #     paste0(toString(ytd_ped_fatal_2018),' Pedestrian'),
-  #     paste0(toString(ytd_ped_fatal_2017),
-  #            ' YTD 2017 (',
-  #            toString(round(((ytd_ped_fatal_2018 - ytd_ped_fatal_2017)/ytd_ped_fatal_2017)*100),digits=2),
-  #            '%)'),
-  #     icon = icon("male",lib='font-awesome'),
-  #     color = "red")  
-  # })
-  # output$BikeDeaths <- renderValueBox({ 
-  #   valueBox(
-  #     paste0(toString(ytd_bike_fatal_2018),' Bicyclist'),
-  #     paste0(toString(ytd_bike_fatal_2017),
-  #            ' YTD 2017 (',
-  #            toString(round(((ytd_bike_fatal_2018 - ytd_bike_fatal_2017)/ytd_bike_fatal_2017)*100),digits=2),
-  #            '%)'),
-  #     icon = icon("bicycle",lib='font-awesome'),
-  #     color = "yellow")  
-  # })
-  # output$VehDeaths <- renderValueBox({
-  #   valueBox(
-  #     paste0(toString(ytd_veh_fatal_2018),' Passenger'),
-  #     paste0(toString(ytd_veh_fatal_2017),
-  #            ' YTD 2017 (',
-  #            toString(round(((ytd_veh_fatal_2018 - ytd_veh_fatal_2017)/ytd_veh_fatal_2017)*100),digits=2),
-  #            '%)'),
-  #     icon = icon("car",lib='font-awesome'),
-  #     color = "blue")   
-  # })
-  # # Monthly Timeline Plot
-  # output$MonthlyFatalChart <- renderPlot({
-  #   ggplot(data = MonthlyFatals, 
-  #          aes(x=month, y=n, group=1)) + 
-  #     geom_line() + ylab("Fatal Collisions") + 
-  #     xlab("Month") + theme(legend.position="bottom" 
-  #                           ,plot.title = element_text(size=15, face="bold")) + 
-  #     ggtitle("Monthly Tracking")
-  # })
 
   output$treatment_type <- renderUI({
     
@@ -1008,7 +799,7 @@ function(input, output, session) {
   })
   
   output$collision_title <- renderText({
-    paste0('YTD Fatals, ',format(collisionsRV$curr_date, format='%m-%d'))
+    paste0('YTD Fatals, as of ',format(collisionsRV$curr_date, format='%m-%d'))
   })
   
   output$infrastructureSummary <- renderTable({

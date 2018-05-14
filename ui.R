@@ -41,6 +41,7 @@ sidebar <- dashboardSidebar(
 
 ## Body Layout
 body <- dashboardBody(
+  tags$style(HTML(".datepicker {z-index:99999 !important;}")),
   tabItems(
     
     # Key Indicator Content
@@ -178,6 +179,7 @@ body <- dashboardBody(
 )
 
 dashboardPage(
+  #tags$style(HTML(".datepicker {z-index:99999 !important;}")),
   header,
   sidebar,
   body,
