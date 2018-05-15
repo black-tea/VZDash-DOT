@@ -155,7 +155,8 @@ body <- dashboardBody(
                     column(4,
                            uiOutput("treatment_info2"),
                            conditionalPanel(condition = "input.treatment_type != null && input.treatment_type.length > 0",
-                                            actionButton("submit", "Submit", class = "btn-primary")))
+                                            actionButton("submit", "Submit", class = "btn-default"))
+                           )
                   ),
                   #hr(),
                   h6(uiOutput("message"), align="center"),

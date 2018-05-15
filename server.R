@@ -740,7 +740,7 @@ function(input, output, session) {
              },
              logical(1))
     mandatoryFilled <- all(mandatoryFilled, length(locationRV$Segment) > 0)
-    
+
     shinyjs::toggleState(id = "submit", condition = mandatoryFilled)
   })
   
