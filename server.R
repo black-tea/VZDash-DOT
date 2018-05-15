@@ -115,36 +115,44 @@ function(input, output, session) {
     return(result)
   }
   
-  sqlQueryTblData <- function (table, flds) {
-    
+  QueryTblSQL <- function (table, flds) {
+    # Query a PostGIS table
+    #
+    # Args:
+    #   table: Name of PostGIS table to query
+    #   flds: Table fields to query
+    #
+    # Returns:
+    #   Dataframe result of the db query
+    #
     # Connect to the database 
     conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
-    
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
-    
     # Construct the query
     query <- sprintf(
       "SELECT %s FROM public.geom_%s",
       paste(flds, collapse = ", "),
       table
     )
-    
     # Submit the query and disconnect
     result <- dbGetQuery(conn, query)
-    
     return(result)
   }
   
-  # Insert row into PostGIS table
-  sqlInsert <- function(table, data) {
-    
+  InsertSQL <- function(table, data) {
+    # Insert a row into a PostGIS table
+    #
+    # Args:
+    #   table: Name of PostGIS table to insert row into
+    #   data: Data to insert into table
+    #
+    # Returns:
+    #   Inserts a row into the PostGIS table
     # Connect to the database
     conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
-    
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
-    
     # Construct the update query by looping over the data fields
     query <- sprintf(
       "INSERT INTO public.geom_%s (%s) VALUES ('%s')",
@@ -152,29 +160,53 @@ function(input, output, session) {
       paste(names(data), collapse = ", "),
       paste(data, collapse = "', '")
     )
-    
     # Submit the insert query
     dbGetQuery(conn, query)
+  }
+  
+  DistToPt <- function(startPt, seg, distFt) {
+    # Generate a point along a line
+    #
+    # Args:
+    #   startPt: A point value at one end of the segment, used to establish origin for distance
+    #   seg: A polyline segment to interpolate the distance along
+    #   distFt: Distance value for interpolation along the polyline segment
+    #
+    # Returns:
+    #   A sf point at the precise distance specified along the line
+    segDist <- st_length(seg)
+    print(attributes(segDist))
+    # Error handling
+    #if distFt > segDist
     
   }
   
-  # Function to update google sheets after making any changes to the DB
-  gsUpdate <- function(table, flds) {
-    
+  UpdateGS <- function(table, flds) {
+    # Update linked google sheet
+    #
+    # Args:
+    #   table: Name of the table in PostgreSQL db to copy to excel sheet
+    #   flds: List of fields to query in the table
+    #
+    # Returns:
+    #   Copies the table data to a google sheet
     # Register test google sheet that already exists
     test_s <- gs_key('1bgkKWcvrMJXP3XOUAi_8-Z4K7k3msUYdS-yCZd_qP50')
-    
     # Query the db for updated table information
-    result <- sqlQueryTblData(table, flds)
-    
+    result <- QueryTblSQL(table, flds)
     # Update google sheet with result
     test_s <- test_s %>%
       gs_edit_cells(ws = table, input = result)
   }
   
-  # Function to create Icons for map
-  createIcon <- function(color) {
-    
+  CreateIcon <- function(color) {
+    # Create icon for mapping, using the awesomeIcons library
+    #
+    # Args:
+    #   color: desired color for the map marker
+    #
+    # Returns:
+    #   Map marker with the 'circle-o' icon in the desired color
     custom_icon <- awesomeIcons(
       icon = 'circle-o',
       iconColor = '#ffffff',
@@ -182,7 +214,6 @@ function(input, output, session) {
       # The markercolor is from a fixed set of color choices
       markerColor = color
     )
-    
     return(custom_icon)
   }
   
@@ -194,12 +225,19 @@ function(input, output, session) {
     )
   }
   
-  # Buffer boundary by a distance in ft, return to wgs84
-  geomBuff <- function(boundary, ft) {
-    geom_nad83 <- st_transform(boundary, 2229) # Convert to NAD83
-    geom_nad83 <- st_buffer(geom_nad83, ft) # Buffer
-    geom_wgs84 <- st_transform(geom_nad83, 4326) # Convert back to wgs84
-    return(geom_wgs84)
+  BuffGeom <- function(boundary, ft) {
+    # Buffer boundary by a distance in ft, return to wgs84
+    #
+    # Args:
+    #   boundary: sf shape for the buffer
+    #   ft: distance to buffer, in ft
+    #
+    # Returns:
+    #   sf shape object, buffered, in wgs84
+    geomNAD83 <- st_transform(boundary, 2229) # Convert to NAD83
+    geomNAD83 <- st_buffer(geomNAD83, ft) # Buffer
+    geomWGS84 <- st_transform(geomNAD83, 4326) # Convert back to wgs84
+    return(geomWGS84)
   }
   
   # Clip to selected boundary
@@ -244,42 +282,10 @@ function(input, output, session) {
                                   )
   
   # RV storing data for each table
-  dbtblRV <- reactiveValues(sfs = sqlQueryTblData('sfs', sfs$tbl_flds),
-                             rfg = sqlQueryTblData('rfg', rfg$tbl_flds),
-                             fb = sqlQueryTblData('fb', fb$tbl_fields)
+  dbtblRV <- reactiveValues(sfs = QueryTblSQL('sfs', sfs$tbl_flds),
+                             rfg = QueryTblSQL('rfg', rfg$tbl_flds),
+                             fb = QueryTblSQL('fb', fb$tbl_fields)
   )
-  
-  # Capture form input values
-  inputDataR <- reactive({
-    fields <- get(input$treatment_type)[['data_flds']]
-    formData <- sapply(fields, function(x) input[[x]])
-  })
-  
-  # Capture fields for display in tables
-  tbl_fields <- reactive({
-    fields <- get(input$treatment_type)[['tbl_flds']]
-  })
-  
-  # Reactive expression to grab intersection data based on user selection
-  intersectionR <- reactive({
-    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
-      int_query <- paste0("SELECT * FROM intersections WHERE tooltip=","'",toString(input$int),"'")
-      intersectionR <- sqlQuery(int_query, type = 'spatial')
-    } else {return(NULL)}
-  })
-  
-  # Reactive expression to grab cross streets from selected intersection
-  xstreetR <- reactive({
-    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
-      # Grab selected intersection information
-      intersectionR <- intersectionR()
-      # Query for streets related to the intersection
-      xstreet_query = paste0("SELECT *
-                             FROM streets 
-                             WHERE int_id_fro=",intersectionR$cl_node_id," OR int_id_to=",intersectionR$cl_node_id)
-      xstreet <- sqlQuery(xstreet_query, type='spatial')
-    } else {return(NULL)}
-  })
   
   # Filter geography, if needed
   geographyR <- reactive({
@@ -293,6 +299,47 @@ function(input, output, session) {
     
     # Return the specific geographical boundaries 
     return(geographySelected[(geographySelected[[column]] == input$geographyName),])
+  })
+  
+  # Capture form input values
+  inputDataR <- reactive({
+    fields <- get(input$treatment_type)[['data_flds']]
+    formData <- sapply(fields, function(x) input[[x]])
+  })
+  
+  
+  # Reactive expression to grab intersection data based on user selection
+  intersectionR <- reactive({
+    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      int_query <- paste0("SELECT * FROM intersections WHERE tooltip=","'",toString(input$int),"'")
+      intersectionR <- sqlQuery(int_query, type = 'spatial')
+    } else {return(NULL)}
+  })
+  
+  # Reactive expression capturing distance for SFS to nearest intersection
+  sfsDistR <- reactive({
+    if(!is.null(input$treatment_type) && input$treatment_type == 'sfs'){
+      distFt <- input$sfs_distance
+      DistToPt(,input$sfs_distance)
+    }
+  })
+  
+  # Capture fields for display in tables
+  tbl_fields <- reactive({
+    fields <- get(input$treatment_type)[['tbl_flds']]
+  })
+  
+  # Reactive expression to grab cross streets from selected intersection
+  xstreetR <- reactive({
+    if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
+      # Grab selected intersection information
+      intersectionR <- intersectionR()
+      # Query for streets related to the intersection
+      xstreet_query = paste0("SELECT *
+                             FROM streets 
+                             WHERE int_id_fro=",intersectionR$cl_node_id," OR int_id_to=",intersectionR$cl_node_id)
+      xstreet <- sqlQuery(xstreet_query, type='spatial')
+    } else {return(NULL)}
   })
   
   # Filter infrastructure, if needed
@@ -343,7 +390,7 @@ function(input, output, session) {
   hinR <- reactive({
     # Clip for Area Filter
     if((input$tabs == 'AreaFilter')&(!is.null(geographyR()))){
-      return(st_intersection(hin, geomBuff(geographyR(),50)))
+      return(st_intersection(hin, BuffGeom(geographyR(),50)))
     } else {
       return(hin)
     }
@@ -353,7 +400,7 @@ function(input, output, session) {
   pcR <- reactive({
     #Clip for Area Filter
     if((input$tabs == 'AreaFilter')&(!is.null(input$geographyName))){
-      return(st_intersection(pc, geomBuff(geographyR(),50)))
+      return(st_intersection(pc, BuffGeom(geographyR(),50)))
     } else {
       return(pc)
     }   
@@ -512,7 +559,7 @@ function(input, output, session) {
         # Add intersection marker to map
         proxy %>% addAwesomeMarkers(
           data = intersectionR,
-          icon = createIcon('darkblue')
+          icon = CreateIcon('darkblue')
         )
         
         # If there is at least one related segment, add it
@@ -527,7 +574,7 @@ function(input, output, session) {
       } else if(nrow(intersectionR) > 1) {
         proxy %>% addAwesomeMarkers(
           data = intersectionR,
-          icon = createIcon("gray")
+          icon = CreateIcon("gray")
         )
         msgRV$msg <- c('Select One Intersection Node')
         
@@ -586,11 +633,11 @@ function(input, output, session) {
               geom_4326 = st_as_text(locationRV$Intersection$geom))
     
     # Add to DB, update progress bar
-    sqlInsert(input$treatment_type, data)
+    InsertSQL(input$treatment_type, data)
     
     # Update linked spreadsheet, update progress bar
     progress$set(detail = "Updating linked Google Sheets.")
-    gsUpdate(input$treatment_type, tbl_fields())
+    UpdateGS(input$treatment_type, tbl_fields())
     
     # Reset form & map objects, map view back to LA
     shinyjs::reset("form")
@@ -603,7 +650,7 @@ function(input, output, session) {
               zoom = 11)
     
     # Update DT
-    dbtblRV[[input$treatment_type]] <- sqlQueryTblData(input$treatment_type, tbl_fields())
+    dbtblRV[[input$treatment_type]] <- QueryTblSQL(input$treatment_type, tbl_fields())
     
   })
   
@@ -688,7 +735,7 @@ function(input, output, session) {
         )
       } else if (input$treatment_type == 'sfs'){
         tagList(
-          numericInput("sfs_distance", label = "Distance from Intersection (ft)", value=0),
+          numericInput("sfs_distance", label = "Distance from Intersection (ft)", value = 0),
           selectInput("sfs_streetside", label = "Side of Street", choices = c('','N','S','E','W')),
           selectInput("sfs_facestraffic", label = "Faces Traffic", choices = c('','N','S','E','W'))
         )
