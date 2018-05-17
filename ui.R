@@ -35,7 +35,7 @@ sidebar <- dashboardSidebar(
              menuSubItem("Area Filter", tabName =  'AreaFilter')),
     menuItem("Infrastructure", icon = icon("road"), startExpanded = FALSE,
              menuSubItem("Add", tabName = "AddI"),
-             menuSubItem("Manage", tabName = "ManageI"))
+             menuSubItem("View", tabName = "ManageI"))
   )
 )
 

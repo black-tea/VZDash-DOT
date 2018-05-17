@@ -95,22 +95,26 @@ cd_boundaries$DISTRICT <- c('07','12','06','03','02','05','04','13','14','11','0
 function(input, output, session) {
   
   ##### Functions #####
-  # Function to run specific query on db
-  sqlQuery <- function (query, type) {
-    
+  QuerySQL <- function (query, type) {
+    # Query PostGIS database
+    #
+    # Args:
+    #   query: String with db query
+    #   type: Type of query. 'Spatial' returns query with geom object, table returns attribute info only
+    #
+    # Returns:
+    #   A dataframe with or without a spatial object
+    #
     # creating DB connection object 
     conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
-    
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
-    
     # Change query type depending on whether we want geometry or not
     if(type == 'table'){
       result <- dbGetQuery(conn, query)
     } else if(type == 'spatial'){
       result <- st_read_db(conn, query=query)
     }
-    
     # return the dataframe
     return(result)
   }
@@ -164,6 +168,23 @@ function(input, output, session) {
     dbGetQuery(conn, query)
   }
   
+  ChoosePt <- function(startPt, seg, segFraction) {
+    # Ensure interpolation along line returns correct point
+    # using PostGIS function ST_LineLocatePoint for verification
+    #
+    # Args:
+    #   startPt: A point value at one end of the segment, used to establish origin for distance
+    #   seg: A polyline segment to interpolate the distance along
+    #   segFraction: Fractional value of the segment where the point is located
+    #
+    # Returns:
+    #   The sf point that matches the distance specified in DistToPt
+    #
+    Pt1 <- st_line_sample(x = seg, n = 1, sample = segFraction) %>% st_cast("POINT")
+    Pt2 <- st_line_sample(x = seg, n = 1, sample = (1 - segFraction)) %>% st_cast("POINT")
+    
+  }
+  
   DistToPt <- function(startPt, seg, distFt) {
     # Generate a point along a line
     #
@@ -174,11 +195,20 @@ function(input, output, session) {
     #
     # Returns:
     #   A sf point at the precise distance specified along the line
-    segDist <- st_length(seg)
-    print(attributes(segDist))
+    #
+    # Need some error handling if distance > length of line
+    seg <- seg %>%
+      st_cast("LINESTRING") %>%
+      st_set_crs(4326) %>%
+      st_transform(2229)
+    segDistFt <- st_length(seg)
+    segFraction <- distFt/segDistFt
+    infrastructurePt <- st_line_sample(x = seg, n = 1, sample = segFraction) %>%
+      st_cast("POINT") %>%
+      st_transform(4326)
+    return(infrastructurePt)
     # Error handling
     #if distFt > segDist
-    
   }
   
   UpdateGS <- function(table, flds) {
@@ -240,6 +270,34 @@ function(input, output, session) {
     return(geomWGS84)
   }
   
+  SelectSegment <- function(segID) {
+    # Select a polyline based on the row ID and draw on map
+    #
+    # Args:
+    #   segID: Row ID of the line
+    #
+    # Returns:
+    #   Adds Selected Line to the Map
+    if(!is.null(xstreetR())){
+      # Filter polylines based on the click
+      polylineSelected <- xstreetR() %>%
+        filter(rownames(.) == segID )
+      # Add selected line information to RV
+      locationRV$Segment <- polylineSelected
+      # Add selected line on top as another color
+      proxy <- leafletProxy("infrastructureManagerMap") %>%
+        # Add selected line shape to map
+        addPolylines(
+          data = polylineSelected,
+          layerId = "selected",
+          color = "#0066a1",
+          opacity = 1
+        )
+      # Once user has selected the street segment, becomes NULL
+      msgRV$msg <- c(' ')
+    } 
+  }
+  
   # Clip to selected boundary
   geomClip <- function(segment) {
     st_intersection(segment,geographyR())
@@ -247,7 +305,7 @@ function(input, output, session) {
   
   ##### Reactive Objects #####
   # RV for intersection list
-  intRV <- reactiveValues(intlist = sqlQuery("SELECT tooltip FROM intersections",type = 'table'))
+  intRV <- reactiveValues(intlist = QuerySQL("SELECT tooltip FROM intersections",type = 'table'))
   
   # RV for location objects
   locationRV <- reactiveValues(Intersection=list(), Segment=list())
@@ -256,29 +314,29 @@ function(input, output, session) {
   msgRV <- reactiveValues()
   
   # RV storing fatal collision data
-  collisionsRV <- reactiveValues(fatal_5yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+  collisionsRV <- reactiveValues(fatal_5yr = QuerySQL("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
                                                        FROM public.geom_lapd_collisions
                                                        WHERE
                                                        severity = '1' AND
                                                        date_occ >= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '5' year",'spatial'),
-                                  fatal_ytd = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+                                  fatal_ytd = QuerySQL("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
                                                        FROM public.geom_lapd_collisions
                                                        WHERE
                                                        severity = '1' AND
                                                        (date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions))",'spatial'),
-                                  fatal_ytd_2yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
+                                  fatal_ytd_2yr = QuerySQL("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry
                                                            FROM public.geom_lapd_collisions
                                                            WHERE severity = '1' AND 
                                                            ((date_occ >= to_char(date_trunc('year', now() - interval '1 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '1 year') OR
                                                            (date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions)))",'spatial'),
-                                  fatal_ytd_5yr = sqlQuery("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry FROM public.geom_lapd_collisions
+                                  fatal_ytd_5yr = QuerySQL("SELECT dr_no, date_occ, time_occ, severity, mode, wkb_geometry FROM public.geom_lapd_collisions
                                                            WHERE severity = '1' AND 
                                                            ((date_occ >= to_char(date_trunc('year', now()),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions)) OR
                                                            (date_occ >= to_char(date_trunc('year', now() - interval '1 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '1 year') OR
                                                            (date_occ >= to_char(date_trunc('year', now() - interval '2 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '2 year') OR
                                                            (date_occ >= to_char(date_trunc('year', now() - interval '3 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '3 year') OR
                                                            (date_occ >= to_char(date_trunc('year', now() - interval '4 year'),'YYYY-01-01')::DATE AND date_occ <= (SELECT MAX(date_occ) FROM public.geom_lapd_collisions) - interval '4 year'))",'spatial'),
-                                  curr_date = sqlQuery("Select MAX(date_occ) from public.geom_lapd_collisions",'table')
+                                  curr_date = QuerySQL("Select MAX(date_occ) from public.geom_lapd_collisions",'table')
                                   )
   
   # RV storing data for each table
@@ -289,14 +347,11 @@ function(input, output, session) {
   
   # Filter geography, if needed
   geographyR <- reactive({
-    
     # Begin Empty
     if (is.null(input$geographyName)){return()}
-    
     # Grab the selected geography type and associated name column
     geographySelected <- get(input$geography_type)
     column = cols[[input$geography_type]]
-    
     # Return the specific geographical boundaries 
     return(geographySelected[(geographySelected[[column]] == input$geographyName),])
   })
@@ -307,22 +362,30 @@ function(input, output, session) {
     formData <- sapply(fields, function(x) input[[x]])
   })
   
-  
   # Reactive expression to grab intersection data based on user selection
   intersectionR <- reactive({
     if(!is.null(input$int) && input$int != "" && length(input$int) > 0){
       int_query <- paste0("SELECT * FROM intersections WHERE tooltip=","'",toString(input$int),"'")
-      intersectionR <- sqlQuery(int_query, type = 'spatial')
+      intersectionR <- QuerySQL(int_query, type = 'spatial')
+      return(intersectionR)
     } else {return(NULL)}
   })
   
-  # Reactive expression capturing distance for SFS to nearest intersection
-  sfsDistR <- reactive({
-    if(!is.null(input$treatment_type) && input$treatment_type == 'sfs'){
-      distFt <- input$sfs_distance
-      DistToPt(,input$sfs_distance)
-    }
-  })
+  # # Reactive expression capturing distance for SFS to nearest intersection
+  # sfsDistR <- reactive({
+  #   if(input$treatment_type == 'sfs') {
+  #   # if(!any(sapply(list(locationRV$Intersection, locationRV$Segment, input$sfs_distance), is.null)) && input$treatment_type == 'sfs'){
+  #   #   sfsPt <- DistToPt(locationRV$Intersection, locationRV$Segment, input$sfs_distance)
+  #     return(input$sfs_distance)
+  #   } else {
+  #     return(NULL)
+  #   }
+  # })
+  
+  # # temporary observer to test sfsDistR
+  # observeEvent(input$int, {
+  #   print(sfsDistPtR())
+  # })
   
   # Capture fields for display in tables
   tbl_fields <- reactive({
@@ -335,10 +398,10 @@ function(input, output, session) {
       # Grab selected intersection information
       intersectionR <- intersectionR()
       # Query for streets related to the intersection
-      xstreet_query = paste0("SELECT *
+      xstreet_query <- paste0("SELECT *
                              FROM streets 
-                             WHERE int_id_fro=",intersectionR$cl_node_id," OR int_id_to=",intersectionR$cl_node_id)
-      xstreet <- sqlQuery(xstreet_query, type='spatial')
+                             WHERE int_id_fro=", intersectionR$cl_node_id, " OR int_id_to=", intersectionR$cl_node_id)
+      xstreet <- QuerySQL(xstreet_query, type = 'spatial')
     } else {return(NULL)}
   })
   
@@ -400,7 +463,7 @@ function(input, output, session) {
   pcR <- reactive({
     #Clip for Area Filter
     if((input$tabs == 'AreaFilter')&(!is.null(input$geographyName))){
-      return(st_intersection(pc, BuffGeom(geographyR(),50)))
+      return(st_intersection(pc, BuffGeom(geographyR(), 50)))
     } else {
       return(pc)
     }   
@@ -415,8 +478,8 @@ function(input, output, session) {
     infrastructureR <- infrastructureR()
     
     # Color palette for Infrastructure
-    colors = c('#E11F8F','#482D8B','#79BC43','#F58220','#FFC828','#008576','#96C0E6')
-    names(colors) = c( 'High-Visibility Crosswalk','Interim Intersection Tightening','Leading Pedestrian Interval','Paddle Sign','Pedestrian-Activated Flashing Beacon','Pedestrian Refuge Island','Scramble Crosswalk')
+    colors = c('#E11F8F', '#482D8B', '#79BC43', '#F58220', '#FFC828', '#008576', '#96C0E6')
+    names(colors) = c('High-Visibility Crosswalk', 'Interim Intersection Tightening', 'Leading Pedestrian Interval', 'Paddle Sign', 'Pedestrian-Activated Flashing Beacon', 'Pedestrian Refuge Island', 'Scramble Crosswalk')
     pal <- colorFactor(
       domain = levels(factor(infrastructureR$Type)),
       palette = colors[levels(factor(infrastructureR$Type))]
@@ -589,26 +652,21 @@ function(input, output, session) {
   
   # Infrastructure Manager Map Observer based on the polyline selection
   observeEvent(input$infrastructureManagerMap_shape_click, {
-    if(!is.null(xstreetR())){
-      # Grab ID of the shape that was clicked
-      clickID <- input$infrastructureManagerMap_shape_click$id
-      # Filter polylines based on the click
-      polylineSelected <- xstreetR() %>%
-        filter(rownames(.) == clickID )
-      locationRV$Segment <- polylineSelected
-      # Add selected line on top as another color
-      proxy <- leafletProxy("infrastructureManagerMap") %>%
-        # Add selected line shape to map
-        addPolylines(
-          data = polylineSelected,
-          layerId = "selected",
-          color = "#0066a1",
-          opacity = 1
-        )
-      # Once user has selected the street segment, becomes NULL
-      msgRV$msg <- c(' ')
-    } 
+    # Add Selection to Map
+    SelectSegment(input$infrastructureManagerMap_shape_click$id)
     
+  })
+  
+  # Observe
+  observe({
+    # For SFS, add point
+    if(!any(sapply(list(locationRV$Intersection, locationRV$Segment, input$sfs_distance), is.null)) && input$treatment_type == 'sfs'){
+      infrastructurePt <- DistToPt(locationRV$Intersection, locationRV$Segment, input$sfs_distance) 
+      # Update Infrastructure Manager Map
+      leafletProxy("infrastructureManagerMap") %>%
+        removeMarker(layerId = "infrastructurePt") %>%
+        addMarkers(data = infrastructurePt, layerId = "infrastructurePt")
+    }
   })
   
   # Observer controlling submission of information to database
