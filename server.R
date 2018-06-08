@@ -443,13 +443,10 @@ function(input, output, session) {
       mutate(year = lubridate::year(date_occ)) %>%
       rename(Mode = mode) %>%
       replace_na(list(Mode = 'MV Occupant')) %>%
-      st_set_geometry(NULL) %>%
       group_by(Mode, year) %>%
       tally() %>%
-      bind_rows(cbind(Mode = 'Total Fatalities', year = 2017, n = count(Fatals2yr %>% st_set_geometry(NULL) %>% filter(lubridate::year(date_occ) == '2017')))) %>%
-      bind_rows(cbind(Mode = 'Total Fatalities', year = 2018, n = count(Fatals2yr %>% st_set_geometry(NULL) %>% filter(lubridate::year(date_occ) == '2018')))) %>%
-      spread(year, n) 
-
+      st_set_geometry(NULL) %>%
+      spread(year, n)  
   })
   
   # HIN Reactive 
@@ -541,7 +538,7 @@ function(input, output, session) {
         color = '#F44242',
         stroke = FALSE,
         fillOpacity = 1,
-        group = 'Fatalities YTD',
+        group = 'Collisions YTD',
         popup = ~paste0('DR#: ', dr_no, '<br>',
                         'Date: ', date_occ, '<br>',
                         'Time: ', time_occ, '<br>',
@@ -565,7 +562,7 @@ function(input, output, session) {
           pal = pal,
           values = levels(factor(infrastructureR$Type))) %>%
         addLayersControl(
-          overlayGroups = c('VZ Streets', 'Fatalities YTD', 'Projects - Complete'),
+          overlayGroups = c('VZ Streets', 'Collisions YTD', 'Projects - Complete'),
           options = layersControlOptions(collapsed = TRUE)
         )
     }
@@ -907,7 +904,7 @@ function(input, output, session) {
   })
   
   output$collision_title <- renderText({
-    paste0('YTD Fatalities, as of ',format(collisionsRV$curr_date, format='%m-%d'))
+    paste0('YTD Fatals, as of ',format(collisionsRV$curr_date, format='%m-%d'))
   })
   
   output$infrastructureSummary <- renderTable({
