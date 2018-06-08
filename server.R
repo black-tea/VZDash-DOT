@@ -106,7 +106,7 @@ function(input, output, session) {
     #   A dataframe with or without a spatial object
     #
     # creating DB connection object 
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Change query type depending on whether we want geometry or not
@@ -130,7 +130,7 @@ function(input, output, session) {
     #   Dataframe result of the db query
     #
     # Connect to the database 
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Construct the query
@@ -154,7 +154,7 @@ function(input, output, session) {
     # Returns:
     #   Inserts a row into the PostGIS table
     # Connect to the database
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Construct the update query by looping over the data fields
