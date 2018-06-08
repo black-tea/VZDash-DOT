@@ -48,6 +48,7 @@ body <- dashboardBody(
     tabItem(tabName = "kpi",
             tabBox(
               width = 6,
+              title = textOutput('collision_title'),
               tabPanel("Table",tableOutput("fatalSummaryKPI")),
               tabPanel("Graph",plotOutput("slopegraph"))
             ),
