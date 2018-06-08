@@ -46,19 +46,18 @@ body <- dashboardBody(
     
     # Key Indicator Content
     tabItem(tabName = "kpi",
-
             tabBox(
               width = 6,
-              title = textOutput("collision_title"),
               tabPanel("Table",tableOutput("fatalSummaryKPI")),
-              tabPanel("Plot",plotOutput("slopegraph"))
+              tabPanel("Graph",plotOutput("slopegraph"))
             ),
             
             box(
               width = 6,
               title = "Citywide Improvements",
               tableOutput("citywideInfrastructureSummary")
-            )
+            ),
+            h4("Beta")
 
     ),
 
