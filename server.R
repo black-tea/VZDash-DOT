@@ -68,9 +68,6 @@ cols <- c('DISTRICT','NAME_ALF','NAME')
 names(cols) <- c('cd_boundaries','cpa_boundaries','nc_boundaries')
 
 ### Load Data
-# Collisions
-lapd_collisions <- read_sf('data/lapd_collisions/collisions.geojson')
-collisions_2017 <- read_sf('data/lapd_collisions/2017collisions.geojson')
 # VZ network files
 hin <- read_sf('data/High_Injury_Network.geojson')
 pc <- read_sf('data/prioritized_corridors/pc_05232017_wgs84_.shp')
@@ -87,8 +84,9 @@ pafb <- read_sf('data/pafb/pafb.shp') %>% select() %>% mutate(Type = 'Pedestrian
 ped_islands <- read_sf('data/ped_islands/ped_islands.shp') %>% select() %>% mutate(Type = 'Pedestrian Refuge Island')
 scrambles <- read_sf('data/scrambles/scrambles.shp') %>% select() %>% mutate(Type = 'Scramble Crosswalk')
 int_tight <- read_sf('data/int_tightening/int_tightening.shp') %>% select() %>% mutate(Type = 'Interim Intersection Tightening')
+speed_feedback_signs <- read_sf('data/speed_feedback_signs/speed_feedback_signs.shp') %>% select() %>% mutate(Type = 'Speed Feedback Signs')
 
-infrastructure <- rbind(highvis_xwalks, lpi, paddle_signs, pafb, ped_islands, scrambles, int_tight)
+infrastructure <- rbind(highvis_xwalks, lpi, paddle_signs, pafb, ped_islands, scrambles, int_tight, speed_feedback_signs)
 infrastructure <- infrastructure %>% mutate(Type = as.factor(Type))
 cd_boundaries$DISTRICT <- c('07','12','06','03','02','05','04','13','14','11','01','10','09','08','15')
 
@@ -106,14 +104,14 @@ function(input, output, session) {
     #   A dataframe with or without a spatial object
     #
     # creating DB connection object 
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Change query type depending on whether we want geometry or not
     if(type == 'table'){
       result <- dbGetQuery(conn, query)
     } else if(type == 'spatial'){
-      result <- st_read_db(conn, query=query)
+      result <- st_read(conn, query=query)
     }
     # return the dataframe
     return(result)
@@ -130,7 +128,7 @@ function(input, output, session) {
     #   Dataframe result of the db query
     #
     # Connect to the database 
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Construct the query
@@ -154,7 +152,7 @@ function(input, output, session) {
     # Returns:
     #   Inserts a row into the PostGIS table
     # Connect to the database
-    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "vzdb", user="postgres", password="Feb241989", port = 5432)
+    conn <- dbConnect(PostgreSQL(), host = "localhost", dbname = "dotdb", user="postgres", password="Feb241989", port = 5432)
     # close db connection after function call exits
     on.exit(dbDisconnect(conn))
     # Construct the update query by looping over the data fields

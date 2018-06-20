@@ -32,10 +32,11 @@ sidebar <- dashboardSidebar(
     menuItem("Key Indicators", tabName="kpi", icon = icon("bar-chart")),
     menuItem("Map", icon = icon("map"), startExpanded = FALSE,
              menuSubItem("Citywide", tabName = "ProjectDelivery"),
-             menuSubItem("Area Filter", tabName =  'AreaFilter')),
-    menuItem("Infrastructure", icon = icon("road"), startExpanded = FALSE,
-             menuSubItem("Add", tabName = "AddI"),
-             menuSubItem("View", tabName = "ManageI"))
+             menuSubItem("Area Filter", tabName =  'AreaFilter'))
+    # ,
+    # menuItem("Infrastructure", icon = icon("road"), startExpanded = FALSE,
+    #          menuSubItem("Add", tabName = "AddI"),
+    #          menuSubItem("View", tabName = "ManageI"))
   )
 )
 
