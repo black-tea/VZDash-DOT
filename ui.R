@@ -56,7 +56,7 @@ body <- dashboardBody(
             
             box(
               width = 6,
-              title = "Citywide Improvements",
+              title = "Improvements as of 06/22",
               tableOutput("citywideInfrastructureSummary")
             ),
             h4("Beta")
